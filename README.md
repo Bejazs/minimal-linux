@@ -14,6 +14,7 @@ This script automates the installation and configuration of a Linux virtual mach
 - **Chrome Remote Desktop** - Remote access to the VM
 - **XFCE4** - Lightweight desktop environment
 - **Burp Suite Community Edition** - Web security testing tool
+- **ZAP Proxy (Zed Attack Proxy)** - Web security testing tool
 - **Visual Studio Code** - Code editor
 - **apt-fast** - Accelerated package manager
 
@@ -109,8 +110,9 @@ EOF
 6. ✅ Remote access configuration
 7. ✅ XFCE4 desktop environment installation
 8. ✅ Burp Suite installation
-9. ✅ VS Code installation
-10. ✅ VS Code extensions: prettier, postfix, chrome-extension-api, chrome-extension-developer-tools
+9. ✅ ZAP Proxy installation and Chrome CA Certificate Trust
+10. ✅ VS Code installation
+11. ✅ VS Code extensions: prettier, postfix, chrome-extension-api, chrome-extension-developer-tools
 
 ## After installation
 
