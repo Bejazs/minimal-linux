@@ -124,6 +124,74 @@ sudo chmod +x burpsuite
 sudo ./burpsuite -q
 rm burpsuite
 
+# Install Java and libnss3-tools (needed for ZAP Proxy)
+echo "Installing default-jre and libnss3-tools..."
+sudo ${APT_INSTALL_CMD} install -yqq default-jre libnss3-tools
+
+# Download ZAP Proxy
+echo "Downloading ZAP Proxy..."
+ZAP_URL=$(curl -s https://api.github.com/repos/zaproxy/zaproxy/releases/latest | grep browser_download_url | grep Linux | cut -d '"' -f 4)
+wget -q "$ZAP_URL" -O zap.tar.gz
+
+echo "Extracting ZAP Proxy..."
+sudo tar -xzf zap.tar.gz -C /opt/
+sudo mv /opt/ZAP* /opt/zaproxy
+rm zap.tar.gz
+
+# Create ZAP Desktop shortcut
+echo "Creating ZAP desktop shortcut..."
+cat << 'DESKTOP' | sudo tee /usr/share/applications/zaproxy.desktop > /dev/null
+[Desktop Entry]
+Name=ZAP Proxy
+Comment=Zed Attack Proxy
+Exec=/opt/zaproxy/zap.sh
+Icon=/opt/zaproxy/zap.ico
+Terminal=false
+Type=Application
+Categories=Development;Security;
+DESKTOP
+
+# Run ZAP Headless briefly to generate config and certificates
+echo "Initializing ZAP to generate certificates..."
+sudo -u ${CHROME_REMOTE_USER_NAME} /opt/zaproxy/zap.sh -daemon -host 127.0.0.1 -port 8080 -config api.disablekey=true > /dev/null 2>&1 &
+ZAP_PID=$!
+
+# Wait for ZAP to start and generate config
+echo "Waiting for ZAP to generate config..."
+sleep 15
+kill $ZAP_PID 2>/dev/null || true
+wait $ZAP_PID 2>/dev/null || true
+
+# Extract ZAP CA Certificate and install into Chrome NSS database
+echo "Installing ZAP CA Certificate to Chrome..."
+USER_HOME="/home/${CHROME_REMOTE_USER_NAME}"
+ZAP_CONFIG="${USER_HOME}/.ZAP/config.xml"
+
+if [ -f "$ZAP_CONFIG" ]; then
+    # Extract Base64 certificate from config.xml
+    sudo -u ${CHROME_REMOTE_USER_NAME} awk -F'[<>]' '/<certificate>/{print $3}' "$ZAP_CONFIG" > "${USER_HOME}/zap_ca_base64.txt"
+
+    # Format as valid PEM
+    sudo -u ${CHROME_REMOTE_USER_NAME} bash -c 'echo "-----BEGIN CERTIFICATE-----" > "'${USER_HOME}'/zap_ca.crt"'
+    sudo -u ${CHROME_REMOTE_USER_NAME} bash -c 'fold -w 64 "'${USER_HOME}'/zap_ca_base64.txt" >> "'${USER_HOME}'/zap_ca.crt"'
+    sudo -u ${CHROME_REMOTE_USER_NAME} bash -c 'echo "-----END CERTIFICATE-----" >> "'${USER_HOME}'/zap_ca.crt"'
+
+    # Create NSS DB if it doesn't exist
+    sudo -u ${CHROME_REMOTE_USER_NAME} mkdir -p "${USER_HOME}/.pki/nssdb"
+    if [ ! -f "${USER_HOME}/.pki/nssdb/cert9.db" ]; then
+        sudo -u ${CHROME_REMOTE_USER_NAME} certutil -d sql:${USER_HOME}/.pki/nssdb -N --empty-password
+    fi
+
+    # Import the certificate
+    sudo -u ${CHROME_REMOTE_USER_NAME} certutil -d sql:${USER_HOME}/.pki/nssdb -A -t "C,," -n "ZAP Root CA" -i "${USER_HOME}/zap_ca.crt"
+
+    # Cleanup temp files
+    rm "${USER_HOME}/zap_ca_base64.txt" "${USER_HOME}/zap_ca.crt"
+    echo "ZAP CA Certificate installed successfully."
+else
+    echo "Warning: ZAP config.xml not found. Could not install CA Certificate."
+fi
+
 # Install VsCode
 echo "Installing VsCode..."
 sudo snap install --classic code
