@@ -1,7 +1,7 @@
 # Single Script for Linux VM Setup
 
 ```bash
-git clone https://github.com/s-razoes/minimal-linux.git && cd minimal-linux && chmod +x setup_vm.sh && sudo ./setup_vm.sh
+git clone https://github.com/Bejazs/minimal-linux.git && cd minimal-linux && chmod +x setup_vm.sh && sudo ./setup_vm.sh
 ```
 
 ## Linux VM Setup Script
