@@ -95,6 +95,20 @@ echo "Installing Google Chrome Stable..."
 sudo ${APT_INSTALL_CMD} install -yqq "./google-chrome-stable_current_amd64.deb"
 rm "./google-chrome-stable_current_amd64.deb"
 
+# Configure Chrome Enterprise Policies for FoxyProxy and Proxy settings
+echo "Configuring Chrome Enterprise Policies..."
+CHROME_POLICY_DIR="/etc/opt/chrome/policies/managed"
+sudo mkdir -p ${CHROME_POLICY_DIR}
+sudo tee ${CHROME_POLICY_DIR}/managed_policies.json > /dev/null <<EOF
+{
+  "ExtensionInstallForcelist": [
+    "gcknhkkoolaabfmlnjonogaaifnjlfnp;https://clients2.google.com/service/update2/crx"
+  ],
+  "ProxyMode": "fixed_servers",
+  "ProxyServer": "127.0.0.1:8080"
+}
+EOF
+
 # Install Chrome Remote Desktop
 echo "Installing Chrome Remote Desktop..."
 sudo ${APT_INSTALL_CMD} install -yqq "./chrome-remote-desktop_current_amd64.deb"
