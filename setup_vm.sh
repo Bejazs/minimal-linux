@@ -138,9 +138,9 @@ sudo chmod +x burpsuite
 sudo ./burpsuite -q
 rm burpsuite
 
-# Install Java and libnss3-tools (needed for ZAP Proxy)
-echo "Installing default-jre and libnss3-tools..."
-sudo ${APT_INSTALL_CMD} install -yqq default-jre libnss3-tools
+# Install Java, OpenJFX (for ZAP Browser View) and libnss3-tools (needed for ZAP Proxy)
+echo "Installing default-jre, openjfx and libnss3-tools..."
+sudo ${APT_INSTALL_CMD} install -yqq default-jre openjfx libnss3-tools
 
 # Download ZAP Proxy
 echo "Downloading ZAP Proxy..."
@@ -151,6 +151,11 @@ echo "Extracting ZAP Proxy..."
 sudo tar -xzf zap.tar.gz -C /opt/
 sudo mv /opt/ZAP* /opt/zaproxy
 rm zap.tar.gz
+
+# Configure ZAP to use JavaFX JVM arguments
+USER_HOME="/home/${CHROME_REMOTE_USER_NAME}"
+sudo -u ${CHROME_REMOTE_USER_NAME} mkdir -p "${USER_HOME}/.ZAP"
+echo "--module-path /usr/share/openjfx/lib --add-modules javafx.web,javafx.swing,javafx.controls" | sudo -u ${CHROME_REMOTE_USER_NAME} tee "${USER_HOME}/.ZAP/.ZAP_JVM.properties" > /dev/null
 
 # Create ZAP Desktop shortcut
 echo "Creating ZAP desktop shortcut..."
@@ -164,6 +169,10 @@ Terminal=false
 Type=Application
 Categories=Development;Security;
 DESKTOP
+
+# Install ZAP Addons: Browser View (HTML render) and Wappalyzer
+echo "Installing ZAP Addons (Browser View, Wappalyzer)..."
+sudo -u ${CHROME_REMOTE_USER_NAME} /opt/zaproxy/zap.sh -cmd -addoninstall browserView -addoninstall wappalyzer > /dev/null 2>&1
 
 # Run ZAP Headless briefly to generate config and certificates
 echo "Initializing ZAP to generate certificates..."
