@@ -215,6 +215,25 @@ else
     echo "Warning: ZAP config.xml not found. Could not install CA Certificate."
 fi
 
+# Install Node.js, npm, and Gemini CLI
+echo "Installing Node.js and npm..."
+sudo ${APT_INSTALL_CMD} install -yqq nodejs npm
+
+echo "Installing Gemini CLI..."
+sudo npm install -g @google/gemini-cli
+
+# Configure MCP server for Gemini CLI
+echo "Configuring MCP server for Gemini CLI..."
+sudo -u ${CHROME_REMOTE_USER_NAME} gemini mcp add -s user chrome-devtools npx chrome-devtools-mcp@latest
+
+# Create Chrome debug wrapper script
+echo "Creating Chrome debug wrapper script..."
+sudo -u ${CHROME_REMOTE_USER_NAME} tee "${USER_HOME}/launch-chrome-debug.sh" > /dev/null <<EOF
+#!/bin/bash
+google-chrome --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug
+EOF
+sudo chmod +x "${USER_HOME}/launch-chrome-debug.sh"
+
 # Install VsCode
 echo "Installing VsCode..."
 sudo snap install --classic code
