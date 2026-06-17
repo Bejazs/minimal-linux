@@ -51,6 +51,17 @@ else
     fi
 fi
 
+# Prompt user for SecLists installation
+echo ""
+read -p "Do you want to install SecLists? This may take a considerable amount of time. [y/N]: " INSTALL_SECLISTS_PROMPT
+if [[ "$INSTALL_SECLISTS_PROMPT" =~ ^[Yy]$ ]]; then
+    INSTALL_SECLISTS=true
+    echo "SecLists will be installed."
+else
+    INSTALL_SECLISTS=false
+    echo "SecLists installation will be skipped."
+fi
+
 # Start timer now
 start_time=$(date +%s)
 
@@ -247,8 +258,12 @@ sudo -u ${CHROME_REMOTE_USER_NAME} code --install-extension solomonkinard.chrome
 echo "done."
 
 # Clone SecLists repository
-echo "Cloning SecLists repository to /usr/share/SecLists..."
-sudo git clone https://github.com/danielmiessler/SecLists.git /usr/share/SecLists
+if [ "$INSTALL_SECLISTS" = true ]; then
+    echo "Cloning SecLists repository to /usr/share/SecLists..."
+    sudo git clone https://github.com/danielmiessler/SecLists.git /usr/share/SecLists
+else
+    echo "Skipping SecLists installation based on user preference."
+fi
 
 ## Reload desktop environment for the current user
 #if [ $DISPLAY_INSTALL_STATUS -eq 0 ]; then
