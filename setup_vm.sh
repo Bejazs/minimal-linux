@@ -128,7 +128,7 @@ fi
 
 # Install packages Gui
 echo "Installing minimal desktop environment and applications..."
-sudo ${APT_INSTALL_CMD} install -yqq xfce4 --no-install-recommends network-manager file-roller dbus-x11 fonts-wqy-microhei fonts-wqy-zenhei fonts-noto-cjk
+sudo ${APT_INSTALL_CMD} install -yqq xfce4 --no-install-recommends network-manager file-roller dbus-x11 fonts-wqy-microhei fonts-wqy-zenhei fonts-noto-cjk git
 wait
 echo "GUI installation completed."
 
@@ -245,6 +245,10 @@ sudo -u ${CHROME_REMOTE_USER_NAME} code --install-extension ipatalas.vscode-post
 sudo -u ${CHROME_REMOTE_USER_NAME} code --install-extension aaravb.chrome-extension-developer-tools
 sudo -u ${CHROME_REMOTE_USER_NAME} code --install-extension solomonkinard.chrome-extension-api
 echo "done."
+
+# Clone SecLists repository
+echo "Cloning SecLists repository to /usr/share/SecLists..."
+sudo git clone https://github.com/danielmiessler/SecLists.git /usr/share/SecLists
 
 ## Reload desktop environment for the current user
 #if [ $DISPLAY_INSTALL_STATUS -eq 0 ]; then
