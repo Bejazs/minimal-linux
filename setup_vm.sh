@@ -106,7 +106,7 @@ echo "Installing Google Chrome Stable..."
 sudo ${APT_INSTALL_CMD} install -yqq "./google-chrome-stable_current_amd64.deb"
 rm "./google-chrome-stable_current_amd64.deb"
 
-# Configure Chrome Enterprise Policies for FoxyProxy and Proxy settings
+# Configure Chrome Enterprise Policies for FoxyProxy
 echo "Configuring Chrome Enterprise Policies..."
 CHROME_POLICY_DIR="/etc/opt/chrome/policies/managed"
 sudo mkdir -p ${CHROME_POLICY_DIR}
@@ -114,9 +114,7 @@ sudo tee ${CHROME_POLICY_DIR}/managed_policies.json > /dev/null <<EOF
 {
   "ExtensionInstallForcelist": [
     "gcknhkkoolaabfmlnjonogaaifnjlfnp;https://clients2.google.com/service/update2/crx"
-  ],
-  "ProxyMode": "fixed_servers",
-  "ProxyServer": "127.0.0.1:8080"
+  ]
 }
 EOF
 
@@ -185,46 +183,6 @@ DESKTOP
 echo "Installing ZAP Addons (Browser View, Wappalyzer)..."
 sudo -u ${CHROME_REMOTE_USER_NAME} /opt/zaproxy/zap.sh -cmd -addoninstall browserView -addoninstall wappalyzer > /dev/null 2>&1
 
-# Run ZAP Headless briefly to generate config and certificates
-echo "Initializing ZAP to generate certificates..."
-sudo -u ${CHROME_REMOTE_USER_NAME} /opt/zaproxy/zap.sh -daemon -host 127.0.0.1 -port 8080 -config api.disablekey=true > /dev/null 2>&1 &
-ZAP_PID=$!
-
-# Wait for ZAP to start and generate config
-echo "Waiting for ZAP to generate config..."
-sleep 15
-kill $ZAP_PID 2>/dev/null || true
-wait $ZAP_PID 2>/dev/null || true
-
-# Extract ZAP CA Certificate and install into Chrome NSS database
-echo "Installing ZAP CA Certificate to Chrome..."
-USER_HOME="/home/${CHROME_REMOTE_USER_NAME}"
-ZAP_CONFIG="${USER_HOME}/.ZAP/config.xml"
-
-if [ -f "$ZAP_CONFIG" ]; then
-    # Extract Base64 certificate from config.xml
-    sudo -u ${CHROME_REMOTE_USER_NAME} awk -F'[<>]' '/<certificate>/{print $3}' "$ZAP_CONFIG" > "${USER_HOME}/zap_ca_base64.txt"
-
-    # Format as valid PEM
-    sudo -u ${CHROME_REMOTE_USER_NAME} bash -c 'echo "-----BEGIN CERTIFICATE-----" > "'${USER_HOME}'/zap_ca.crt"'
-    sudo -u ${CHROME_REMOTE_USER_NAME} bash -c 'fold -w 64 "'${USER_HOME}'/zap_ca_base64.txt" >> "'${USER_HOME}'/zap_ca.crt"'
-    sudo -u ${CHROME_REMOTE_USER_NAME} bash -c 'echo "-----END CERTIFICATE-----" >> "'${USER_HOME}'/zap_ca.crt"'
-
-    # Create NSS DB if it doesn't exist
-    sudo -u ${CHROME_REMOTE_USER_NAME} mkdir -p "${USER_HOME}/.pki/nssdb"
-    if [ ! -f "${USER_HOME}/.pki/nssdb/cert9.db" ]; then
-        sudo -u ${CHROME_REMOTE_USER_NAME} certutil -d sql:${USER_HOME}/.pki/nssdb -N --empty-password
-    fi
-
-    # Import the certificate
-    sudo -u ${CHROME_REMOTE_USER_NAME} certutil -d sql:${USER_HOME}/.pki/nssdb -A -t "C,," -n "ZAP Root CA" -i "${USER_HOME}/zap_ca.crt"
-
-    # Cleanup temp files
-    rm "${USER_HOME}/zap_ca_base64.txt" "${USER_HOME}/zap_ca.crt"
-    echo "ZAP CA Certificate installed successfully."
-else
-    echo "Warning: ZAP config.xml not found. Could not install CA Certificate."
-fi
 
 # Install Node.js (v20) and Gemini CLI
 echo "Installing Node.js 20.x..."
@@ -237,6 +195,49 @@ sudo npm install -g @google/gemini-cli
 # Configure MCP server for Gemini CLI
 echo "Configuring MCP server for Gemini CLI..."
 sudo -u ${CHROME_REMOTE_USER_NAME} gemini mcp add -s user chrome-devtools npx chrome-devtools-mcp@latest
+
+# Configure Gemini CLI global context
+echo "Configuring Gemini global context..."
+USER_HOME="/home/${CHROME_REMOTE_USER_NAME}"
+GEMINI_CONFIG_DIR="${USER_HOME}/.config/gemini"
+sudo -u ${CHROME_REMOTE_USER_NAME} mkdir -p "${GEMINI_CONFIG_DIR}"
+sudo -u ${CHROME_REMOTE_USER_NAME} tee "${GEMINI_CONFIG_DIR}/Gemini.md" > /dev/null << 'EOF'
+Role & Identity
+
+You are an elite Threat Hunting and Threat Intelligence AI Assistant. Your goal is to collaborate with the user to analyze emerging threats and design actionable hunts. You maintain a balanced perspective, distinguishing between legitimate "Dual-Use" functionality and malicious exploitation.
+
+Core Directives
+
+Proactive Threat Discovery: Search the web for the latest cybersecurity articles and threat intel to identify novel attack methods.
+
+Contextual Risk Assessment: For every TTP or code snippet discussed, first evaluate its legitimate use cases (e.g., productivity, debugging, ad-blocking) before analyzing its potential for abuse.
+
+Manifest V3 Weaponization Analysis: Analyze how an adversary could implement a technique within MV3 constraints (Service Workers, Offscreen Documents, declarativeNetRequest, etc.).
+
+Critical Alerting: Explicitly flag techniques that have a high probability of abuse or lack a common legitimate justification.
+
+Framework Adherence: Map findings to the MITRE ATT&CK framework.
+
+Response Structure
+
+To ensure clarity and balance, use the following structure:
+
+Threat/Technique Overview: A technical summary of the concept.
+
+Legitimate Use vs. Abuse Potential: * Legitimate: Why would a developer use this? (e.g., "Standard telemetry for UI/UX improvement").
+
+Risk Level: [Low / Medium / High / Critical] based on how easily the feature can be weaponized without user consent.
+
+Manifest V3 Weaponization (The "Attacker's View"): Technical explanation of execution within MV3 boundaries.
+
+MITRE ATT&CK Mapping: Associated TTPs and IDs.
+
+Hunting Hypothesis & Artifacts: Telemetry and logs needed to distinguish between the legitimate use and the malicious abuse.
+
+Tone & Style
+
+Be highly technical, objective, and analytical. Act as a "Red Team / Blue Team" sounding board. If a technique is standard practice for legitimate extensions, say so. Only sound the alarm when the behavior deviates from the expected functional norm or crosses into clear MITRE ATT&CK territory.
+EOF
 
 # Create Chrome debug wrapper script
 echo "Creating Chrome debug wrapper script..."

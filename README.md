@@ -87,10 +87,10 @@ Enter command: [PASTE YOUR COMMAND HERE]
 ## Default settings
 
 - **Remote Desktop PIN**: `123456`
-- **Default proxy**: `127.0.0.1:8080` (configured for Burp Suite)
 - **Desktop environment**: XFCE4
 
-### To set the proxy in chrome execute the command
+### To manually set the proxy in chrome
+If you want to configure Chrome to use a local proxy (like Burp Suite or ZAP Proxy) on `127.0.0.1:8080`, you can execute the following command:
 ```bash
 sudo mkdir -p "/etc/opt/chrome/policies/managed"
 sudo tee "/etc/opt/chrome/policies/managed/proxy.json" > /dev/null <<EOF
@@ -102,6 +102,38 @@ sudo tee "/etc/opt/chrome/policies/managed/proxy.json" > /dev/null <<EOF
 EOF
 ```
 
+### To manually trust ZAP / Burp Certificate
+If you are using a proxy like ZAP, you'll need to manually install its Root CA Certificate into Chrome's NSS database.
+
+1. **Start ZAP Proxy** locally to generate the `config.xml` file.
+2. Use the following commands to extract the CA Certificate and install it into Chrome's database:
+
+```bash
+# Set your user home path
+USER_HOME=~
+
+# Extract Base64 certificate from config.xml
+awk -F'[<>]' '/<certificate>/{print $3}' "${USER_HOME}/.ZAP/config.xml" > "${USER_HOME}/zap_ca_base64.txt"
+
+# Format as valid PEM
+echo "-----BEGIN CERTIFICATE-----" > "${USER_HOME}/zap_ca.crt"
+fold -w 64 "${USER_HOME}/zap_ca_base64.txt" >> "${USER_HOME}/zap_ca.crt"
+echo "-----END CERTIFICATE-----" >> "${USER_HOME}/zap_ca.crt"
+
+# Create NSS DB if it doesn't exist
+mkdir -p "${USER_HOME}/.pki/nssdb"
+if [ ! -f "${USER_HOME}/.pki/nssdb/cert9.db" ]; then
+    certutil -d sql:${USER_HOME}/.pki/nssdb -N --empty-password
+fi
+
+# Import the certificate
+certutil -d sql:${USER_HOME}/.pki/nssdb -A -t "C,," -n "ZAP Root CA" -i "${USER_HOME}/zap_ca.crt"
+
+# Cleanup temp files
+rm "${USER_HOME}/zap_ca_base64.txt" "${USER_HOME}/zap_ca.crt"
+```
+*(For Burp Suite, you can export its certificate via the UI and import it using the `certutil` command above).*
+
 ## What happens during execution
 
 1. ✅ Authorization code extraction
@@ -112,8 +144,8 @@ EOF
 6. ✅ Remote access configuration
 7. ✅ XFCE4 desktop environment installation
 8. ✅ Burp Suite installation
-9. ✅ ZAP Proxy installation and Chrome CA Certificate Trust
-10. ✅ Node.js, npm, Gemini CLI, and MCP Server setup
+9. ✅ ZAP Proxy installation
+10. ✅ Node.js, npm, Gemini CLI, MCP Server setup, and Global Context (`Gemini.md`) Configuration
 11. ✅ VS Code installation
 12. ✅ VS Code extensions: prettier, postfix, chrome-extension-api, chrome-extension-developer-tools
 
