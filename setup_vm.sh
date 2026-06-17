@@ -226,9 +226,10 @@ else
     echo "Warning: ZAP config.xml not found. Could not install CA Certificate."
 fi
 
-# Install Node.js, npm, and Gemini CLI
-echo "Installing Node.js and npm..."
-sudo ${APT_INSTALL_CMD} install -yqq nodejs npm
+# Install Node.js (v20) and Gemini CLI
+echo "Installing Node.js 20.x..."
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo ${APT_INSTALL_CMD} install -yqq nodejs
 
 echo "Installing Gemini CLI..."
 sudo npm install -g @google/gemini-cli
