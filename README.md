@@ -17,6 +17,8 @@ This script automates the installation and configuration of a Linux virtual mach
 - **ZAP Proxy (Zed Attack Proxy)** - Web security testing tool
 - **Visual Studio Code** - Code editor
 - **apt-fast** - Accelerated package manager
+- **Gemini CLI** - Command line tool for Gemini models
+- **Chrome DevTools MCP Server** - Allows Gemini CLI to control Chrome via CDP
 
 ## Prerequisites
 
@@ -111,8 +113,9 @@ EOF
 7. ✅ XFCE4 desktop environment installation
 8. ✅ Burp Suite installation
 9. ✅ ZAP Proxy installation and Chrome CA Certificate Trust
-10. ✅ VS Code installation
-11. ✅ VS Code extensions: prettier, postfix, chrome-extension-api, chrome-extension-developer-tools
+10. ✅ Node.js, npm, Gemini CLI, and MCP Server setup
+11. ✅ VS Code installation
+12. ✅ VS Code extensions: prettier, postfix, chrome-extension-api, chrome-extension-developer-tools
 
 ## After installation
 
@@ -120,6 +123,20 @@ EOF
 2. **Sign in**: Use the same Google account used to generate the code
 3. **Connect**: Click on your VM name
 4. **Enter PIN**: Use `123456` (or change in script if desired)
+
+### Using Gemini CLI with Chrome DevTools Protocol (CDP)
+
+The VM is pre-configured with `gemini-cli` and the `chrome-devtools-mcp` server. This allows Gemini to interact directly with your local Chrome browser via the Chrome DevTools Protocol, enabling real-time monitoring of network traffic, evaluating arbitrary JavaScript, and more.
+
+To use this feature:
+1. Open a terminal and run the provided wrapper script to launch Chrome with the remote debugging port enabled:
+   ```bash
+   ~/launch-chrome-debug.sh
+   ```
+2. In another terminal window, launch `gemini-cli` and instruct it to perform a browser task:
+   ```bash
+   gemini
+   ```
 
 ## Troubleshooting
 
