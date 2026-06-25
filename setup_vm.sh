@@ -71,10 +71,6 @@ CHROME_REMOTE_USER_NAME="${SUDO_USER}"
 
 APT_INSTALL_CMD="apt"
 
-# Default IP Address and Port
-IP_ADDRESS='127.0.0.1'
-PORT=8080
-
 
 # Update the packages lists and install apt-fast
 echo "Installing apt-fast..."
@@ -266,49 +262,6 @@ if [ "$INSTALL_SECLISTS" = true ]; then
 else
     echo "Skipping SecLists installation based on user preference."
 fi
-
-## Reload desktop environment for the current user
-#if [ $DISPLAY_INSTALL_STATUS -eq 0 ]; then
-#  echo "Reload desktop environment for the current user ${CHROME_REMOTE_USER_NAME}..."
-#  sudo systemctl restart chrome-remote-desktop@${CHROME_REMOTE_USER_NAME}.service
-
-#  echo "Setting manual proxy settings (${IP_ADDRESS}:${PORT}) for Chrome Remote Desktop session..."
-  #
-#  # Create proxy configuration for XFCE4
-#  USER_HOME="/home/${CHROME_REMOTE_USER_NAME}"
-  #
-#  # Set environment variables for proxy (system-wide)
-#  echo "export http_proxy=http://${IP_ADDRESS}:${PORT}" | sudo tee -a ${USER_HOME}/.bashrc
-#  echo "export https_proxy=http://${IP_ADDRESS}:${PORT}" | sudo tee -a ${USER_HOME}/.bashrc
-#  echo "export HTTP_PROXY=http://${IP_ADDRESS}:${PORT}" | sudo tee -a ${USER_HOME}/.bashrc
-#  echo "export HTTPS_PROXY=http://${IP_ADDRESS}:${PORT}" | sudo tee -a ${USER_HOME}/.bashrc
-  #
-#  # Create proxy configuration for applications
-#  sudo -u ${CHROME_REMOTE_USER_NAME} mkdir -p ${USER_HOME}/.config/environment.d
-#  echo "http_proxy=http://${IP_ADDRESS}:${PORT}" | sudo -u ${CHROME_REMOTE_USER_NAME} tee ${USER_HOME}/.config/environment.d/proxy.conf
-#  echo "https_proxy=http://${IP_ADDRESS}:${PORT}" | sudo -u ${CHROME_REMOTE_USER_NAME} tee -a ${USER_HOME}/.config/environment.d/proxy.conf
-#  echo "HTTP_PROXY=http://${IP_ADDRESS}:${PORT}" | sudo -u ${CHROME_REMOTE_USER_NAME} tee -a ${USER_HOME}/.config/environment.d/proxy.conf
-#  echo "HTTPS_PROXY=http://${IP_ADDRESS}:${PORT}" | sudo -u ${CHROME_REMOTE_USER_NAME} tee -a ${USER_HOME}/.config/environment.d/proxy.conf
-  #
-#  # Configure Chrome browser proxy settings
-#  CHROME_POLICY_DIR="/etc/opt/chrome/policies/managed"
-#  sudo mkdir -p ${CHROME_POLICY_DIR}
-#  sudo tee ${CHROME_POLICY_DIR}/proxy.json > /dev/null <<EOF
-#{
-#  "ProxyMode": "fixed_servers",
-#  "ProxyServer": "localhost:127.0.0.1",
-#  "ProxyBypassList": "localhost,127.0.0.1"
-#}
-#EOF
-  #
-#  # Set proper ownership
-#  sudo chown -R ${CHROME_REMOTE_USER_NAME}:${CHROME_REMOTE_USER_NAME} ${USER_HOME}/.config
-#  sudo chown ${CHROME_REMOTE_USER_NAME}:${CHROME_REMOTE_USER_NAME} ${USER_HOME}/.bashrc
-  #
-#  echo "Manual proxy settings applied for XFCE4 environment."
-#else
-#   echo "GUI installation failed. Skipping desktop environment reload."
-#fi
 
 # End timer
 end_time=$(date +%s)
