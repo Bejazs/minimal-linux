@@ -180,24 +180,20 @@ echo "Installing ZAP Addons (Browser View, Wappalyzer)..."
 sudo -u ${CHROME_REMOTE_USER_NAME} /opt/zaproxy/zap.sh -cmd -addoninstall browserView -addoninstall wappalyzer > /dev/null 2>&1
 
 
-# Install Node.js (v20) and Gemini CLI
+# Install Node.js (v20)
 echo "Installing Node.js 20.x..."
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo ${APT_INSTALL_CMD} install -yqq nodejs
 
-echo "Installing Gemini CLI..."
-sudo npm install -g @google/gemini-cli
+echo "Installing Antigravity CLI..."
+curl -fsSL https://antigravity.google/cli/install.sh | bash
 
-# Configure MCP server for Gemini CLI
-echo "Configuring MCP server for Gemini CLI..."
-sudo -u ${CHROME_REMOTE_USER_NAME} gemini mcp add -s user chrome-devtools npx chrome-devtools-mcp@latest
-
-# Configure Gemini CLI global context
-echo "Configuring Gemini global context..."
+# Configure Antigravity CLI global context
+echo "Configuring Antigravity global context..."
 USER_HOME="/home/${CHROME_REMOTE_USER_NAME}"
-GEMINI_CONFIG_DIR="${USER_HOME}/.config/gemini"
-sudo -u ${CHROME_REMOTE_USER_NAME} mkdir -p "${GEMINI_CONFIG_DIR}"
-sudo -u ${CHROME_REMOTE_USER_NAME} tee "${GEMINI_CONFIG_DIR}/Gemini.md" > /dev/null << 'EOF'
+ANTIGRAVITY_CONFIG_DIR="${USER_HOME}/.gemini/config"
+sudo -u ${CHROME_REMOTE_USER_NAME} mkdir -p "${ANTIGRAVITY_CONFIG_DIR}"
+sudo -u ${CHROME_REMOTE_USER_NAME} tee "${ANTIGRAVITY_CONFIG_DIR}/Agent.md" > /dev/null << 'EOF'
 Role & Identity
 
 You are an elite Threat Hunting and Threat Intelligence AI Assistant. Your goal is to collaborate with the user to analyze emerging threats and design actionable hunts. You maintain a balanced perspective, distinguishing between legitimate "Dual-Use" functionality and malicious exploitation.
