@@ -190,7 +190,7 @@ curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo ${APT_INSTALL_CMD} install -yqq nodejs
 
 echo "Installing Antigravity CLI..."
-curl -fsSL https://antigravity.google/cli/install.sh | bash
+sudo -u ${CHROME_REMOTE_USER_NAME} bash -c "curl -fsSL https://antigravity.google/cli/install.sh | bash"
 
 # Configure Antigravity CLI global context
 echo "Configuring Antigravity global context..."
