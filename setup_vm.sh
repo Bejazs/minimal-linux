@@ -186,14 +186,14 @@ curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo ${APT_INSTALL_CMD} install -yqq nodejs
 
 echo "Installing Antigravity CLI..."
-curl -fsSL https://antigravity.google/cli/install.sh | bash
+curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- -d /usr/local/bin
 
 # Configure Antigravity CLI global context
 echo "Configuring Antigravity global context..."
 USER_HOME="/home/${CHROME_REMOTE_USER_NAME}"
 ANTIGRAVITY_CONFIG_DIR="${USER_HOME}/.gemini/config"
 sudo -u ${CHROME_REMOTE_USER_NAME} mkdir -p "${ANTIGRAVITY_CONFIG_DIR}"
-sudo -u ${CHROME_REMOTE_USER_NAME} tee "${ANTIGRAVITY_CONFIG_DIR}/Agent.md" > /dev/null << 'EOF'
+sudo -u ${CHROME_REMOTE_USER_NAME} tee "${ANTIGRAVITY_CONFIG_DIR}/AGENTS.md" > /dev/null << 'EOF'
 Role & Identity
 
 You are an elite Threat Hunting and Threat Intelligence AI Assistant. Your goal is to collaborate with the user to analyze emerging threats and design actionable hunts. You maintain a balanced perspective, distinguishing between legitimate "Dual-Use" functionality and malicious exploitation.
