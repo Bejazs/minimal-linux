@@ -185,6 +185,17 @@ echo "Installing Node.js 20.x..."
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo ${APT_INSTALL_CMD} install -yqq nodejs
 
+# Install uv (Python package manager)
+echo "Installing uv..."
+sudo -u ${CHROME_REMOTE_USER_NAME} curl -LsSf https://astral.sh/uv/install.sh | sudo -u ${CHROME_REMOTE_USER_NAME} sh
+
+# Install crx-analyzer using uv
+echo "Installing crx-analyzer..."
+sudo -u ${CHROME_REMOTE_USER_NAME} /home/${CHROME_REMOTE_USER_NAME}/.local/bin/uv tool install crx-analyzer
+
+# Ensure .local/bin is in PATH for the user by updating .bashrc
+echo 'export PATH="$HOME/.local/bin:$PATH"' | sudo -u ${CHROME_REMOTE_USER_NAME} tee -a /home/${CHROME_REMOTE_USER_NAME}/.bashrc > /dev/null
+
 echo "Installing Antigravity CLI..."
 curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- -d /usr/local/bin
 
