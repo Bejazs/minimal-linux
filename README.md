@@ -18,6 +18,8 @@ This script automates the installation and configuration of a Linux virtual mach
 - **Visual Studio Code** - Code editor
 - **apt-fast** - Accelerated package manager
 - **Antigravity CLI** - Command line tool for Antigravity models
+- **uv** - Extremely fast Python package installer and resolver
+- **crx-analyzer** - Python tool for analyzing browser extensions through a risk management lens
 
 ## Prerequisites
 
@@ -144,7 +146,7 @@ rm "${USER_HOME}/zap_ca_base64.txt" "${USER_HOME}/zap_ca.crt"
 7. ✅ XFCE4 desktop environment installation
 8. ✅ Burp Suite installation
 9. ✅ ZAP Proxy installation
-10. ✅ Node.js, npm, Antigravity CLI setup, and Global Context (`Agent.md`) Configuration
+10. ✅ Node.js, npm, uv, crx-analyzer, Antigravity CLI setup, and Global Context (`Agent.md`) Configuration
 11. ✅ VS Code installation
 12. ✅ VS Code extensions: prettier, postfix, chrome-extension-api, chrome-extension-developer-tools
 
