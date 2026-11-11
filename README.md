@@ -187,6 +187,11 @@ To check that the restrictions are active, run `/status` inside Claude Code (the
 - Check if you have sudo permissions
 - Confirm the code hasn't expired (codes have limited validity)
 
+### Is it stuck or still working?
+- The script prints the full output of every step and also writes it to `/var/log/minimal-linux-setup.log` (root only).
+- From a second SSH session: `sudo tail -f /var/log/minimal-linux-setup.log`
+- apt gives up on a stalled mirror after 30 s per attempt (3 retries) instead of hanging forever.
+
 ### Slow downloads
 - Check your internet connection
 
