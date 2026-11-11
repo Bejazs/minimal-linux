@@ -276,6 +276,37 @@ Be highly technical, objective, and analytical. Function as a Red Team / Blue Te
 
 EOF
 
+# Install Claude Code CLI (native installer, per-user, installs to ~/.local/bin/claude)
+echo "Installing Claude Code CLI..."
+sudo -u ${CHROME_REMOTE_USER_NAME} bash -c 'curl -fsSL https://claude.ai/install.sh | bash'
+
+# Share the same threat-hunting instructions with Claude Code (it reads CLAUDE.md, not AGENTS.md)
+echo "Configuring Claude Code global context..."
+CLAUDE_CONFIG_DIR_USER="${USER_HOME}/.claude"
+sudo -u ${CHROME_REMOTE_USER_NAME} mkdir -p "${CLAUDE_CONFIG_DIR_USER}"
+echo "@${ANTIGRAVITY_CONFIG_DIR}/AGENTS.md" | sudo -u ${CHROME_REMOTE_USER_NAME} tee "${CLAUDE_CONFIG_DIR_USER}/CLAUDE.md" > /dev/null
+
+# Restricted workspace for sample analysis: start Claude Code from ~/analysis.
+# Inside it Claude has no shell, no web and no MCP tools, cannot read outside the folder,
+# and bypass mode is disabled, so instructions injected via sample code have nothing to exfiltrate with.
+echo "Creating restricted Claude Code analysis workspace (~/analysis)..."
+ANALYSIS_DIR="${USER_HOME}/analysis"
+sudo -u ${CHROME_REMOTE_USER_NAME} mkdir -p "${ANALYSIS_DIR}/.claude" "${ANALYSIS_DIR}/samples"
+sudo -u ${CHROME_REMOTE_USER_NAME} tee "${ANALYSIS_DIR}/.claude/settings.json" > /dev/null << 'EOF'
+{
+  "permissions": {
+    "deny": [
+      "Bash",
+      "WebFetch",
+      "WebSearch",
+      "mcp__*"
+    ],
+    "blockReadsOutsideWorkingDirectories": true,
+    "disableBypassPermissionsMode": "disable"
+  }
+}
+EOF
+
 # Create Chrome debug wrapper script
 echo "Creating Chrome debug wrapper script..."
 sudo -u ${CHROME_REMOTE_USER_NAME} tee "${USER_HOME}/launch-chrome-debug.sh" > /dev/null <<EOF
