@@ -125,8 +125,12 @@ sudo ${APT_INSTALL_CMD} update
 
 echo "Downloading Chrome and Chrome Remote Desktop..."
 wget -nv "https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb" -O google-chrome-stable_current_amd64.deb &
+pid_chrome=$!
 wget -nv "https://dl.google.com/linux/direct/chrome-remote-desktop_current_amd64.deb" -O chrome-remote-desktop_current_amd64.deb &
-wait
+pid_crd=$!
+# Wait on these PIDs only: a bare `wait` (bash 5.2) also waits for the logging
+# `tee` process substitution above, which never exits, so the script would hang.
+wait "$pid_chrome" "$pid_crd" || true
 for f in google-chrome-stable_current_amd64.deb chrome-remote-desktop_current_amd64.deb; do
   if [ ! -s "$f" ]; then
     echo "Error: download of $f failed (missing or empty). Check outbound access to dl.google.com."
