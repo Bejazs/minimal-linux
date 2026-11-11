@@ -18,6 +18,7 @@ This script automates the installation and configuration of a Linux virtual mach
 - **Visual Studio Code** - Code editor
 - **apt-fast** - Accelerated package manager
 - **Antigravity CLI** - Command line tool for Antigravity models
+- **Claude Code CLI** - Anthropic's CLI agent, sharing the same threat-hunting instructions (`AGENTS.md`)
 - **uv** - Extremely fast Python package installer and resolver
 - **crx-analyzer** - Python tool for analyzing browser extensions through a risk management lens
 
@@ -146,7 +147,7 @@ rm "${USER_HOME}/zap_ca_base64.txt" "${USER_HOME}/zap_ca.crt"
 7. ✅ XFCE4 desktop environment installation
 8. ✅ Burp Suite installation
 9. ✅ ZAP Proxy installation
-10. ✅ Node.js, npm, uv, crx-analyzer, Antigravity CLI setup, and Global Context (`Agent.md`) Configuration
+10. ✅ Node.js, npm, uv, crx-analyzer, Antigravity CLI and Claude Code CLI setup, and Global Context (`AGENTS.md`) Configuration
 11. ✅ VS Code installation
 12. ✅ VS Code extensions: prettier, postfix, chrome-extension-api, chrome-extension-developer-tools
 
@@ -156,6 +157,26 @@ rm "${USER_HOME}/zap_ca_base64.txt" "${USER_HOME}/zap_ca.crt"
 2. **Sign in**: Use the same Google account used to generate the code
 3. **Connect**: Click on your VM name
 4. **Enter PIN**: Use `123456` (or change in script if desired)
+
+## Using Claude Code for sample analysis
+
+The script installs Claude Code for the remote desktop user and links its global instructions to the Antigravity `AGENTS.md` (`~/.claude/CLAUDE.md` imports it).
+
+Run `claude` once and sign in. Then put samples in `~/analysis/samples/` and start Claude Code **from `~/analysis`**:
+
+```bash
+cd ~/analysis && claude
+```
+
+`~/analysis/.claude/settings.json` restricts every session started there:
+
+- `Bash`, `WebFetch`, `WebSearch` and all MCP tools are removed, so no shell and no network.
+- It cannot read files outside `~/analysis`, so it cannot read `~/.claude`, `~/.gemini` or other credentials.
+- Bypass-permissions mode is disabled.
+
+Extension code is untrusted input and can contain text written to manipulate an AI agent. These restrictions limit what injected instructions can do. Start Claude from another folder only for general research, never with samples in it.
+
+To check that the restrictions are active, run `/status` inside Claude Code (the `Setting sources` line should list project settings) and `/permissions`.
 
 ## Troubleshooting
 
