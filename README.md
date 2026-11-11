@@ -1,94 +1,69 @@
-# Single Script for Linux VM Setup
+# minimal-linux
+
+Setup script and offline static analyzer for threat-hunting Chrome extensions (MV2/MV3) on throwaway cloud VMs, used through Chrome Remote Desktop.
+
+Two modes, **one instance each**, so LLM credentials and extension execution never share a machine:
+
+| | `static` (default) | `gui` |
+|---|---|---|
+| Purpose | Static analysis, one command per sample, batch, version diff | Interactive/dynamic analysis with Burp/ZAP and a test account |
+| Extension code runs? | **Never**: read only, inside an offline container | Yes, in Chrome on this instance only |
+| LLM (Antigravity, Claude Code) | Yes, restricted to `~/analysis` | **No** |
+| Installs | CRD, XFCE, Chrome (installed with CRD; never load samples in it), VS Code, Docker, `ext-analyze`, Antigravity, Claude Code | CRD, XFCE, Chrome + FoxyProxy policy, CDP launcher, Burp CE, ZAP, Java, Node 20, uv + crx-analyzer, VS Code + extensions, SecLists (optional) |
+
+## Install
+
+Ubuntu 24.04 LTS, run as your normal user with sudo:
 
 ```bash
-git clone https://github.com/Bejazs/minimal-linux.git && cd minimal-linux && chmod +x setup_vm.sh && sudo ./setup_vm.sh
+git clone https://github.com/Bejazs/minimal-linux.git && cd minimal-linux
+sudo ./setup_vm.sh --mode static          # or: --mode gui [--seclists]
 ```
 
-## Linux VM Setup Script
+The script asks for the Chrome Remote Desktop command from <https://remotedesktop.google.com/headless> (Begin → Next → copy the command). You can also pass it as the last argument. Without `--mode` it asks which mode to install.
 
-This script automates the installation and configuration of a Linux virtual machine with remote desktop and essential tools.
+Everything after the prompts is shown on screen and written to `/var/log/minimal-linux-setup.log` (root only; the CRD code is not logged). Follow it from a second SSH session with `sudo tail -f /var/log/minimal-linux-setup.log`. apt gives up on a stalled mirror after 30 s per attempt (3 retries).
 
-## What the script installs
+Outbound access needed: Ubuntu mirrors, dl.google.com, snapcraft. Static also needs Docker Hub, deb.debian.org, PyPI, antigravity.google and claude.ai; gui also needs portswigger.net, api.github.com/github.com, deb.nodesource.com and astral.sh.
 
-- **Google Chrome** - Web browser
-- **Chrome Remote Desktop** - Remote access to the VM
-- **XFCE4** - Lightweight desktop environment
-- **Burp Suite Community Edition** - Web security testing tool
-- **ZAP Proxy (Zed Attack Proxy)** - Web security testing tool
-- **Visual Studio Code** - Code editor
-- **Antigravity CLI** - Command line tool for Antigravity models
-- **Claude Code CLI** - Anthropic's CLI agent, sharing the same threat-hunting instructions (`AGENTS.md`)
-- **uv** - Extremely fast Python package installer and resolver
-- **crx-analyzer** - Python tool for analyzing browser extensions through a risk management lens
+## Static mode: `ext-analyze`
 
-## Prerequisites
-
-- Ubuntu/Debian Linux system
-- sudo permissions
-- Internet connection
-- Chrome Remote Desktop authorization code (optional)
-
-## How to use
-
-### 1. Make the script executable
+After install, log out and back in once (docker group). Then:
 
 ```bash
-chmod +x setup_vm.sh
+ext-analyze ~/analysis/samples/suspect.crx            # .crx (v2/v3), .zip or unpacked folder
+ext-analyze ~/analysis/samples/*                      # batch
+ext-analyze --diff old-1.2.0.crx new-1.3.0.crx        # what changed between versions
 ```
 
-### 2. Run the script
+Each sample runs in its own `ext-static` container with `--network none`, `--read-only`, `--cap-drop ALL`, `no-new-privileges`, your UID (not root), CPU/memory/PID limits, and the sample mounted read-only. The archive is unpacked with path-traversal, symlink and size checks. Nothing in the extension is executed.
 
-There are three ways to run the script:
+Output per sample in `~/analysis/out/<name>-<sha256[:12]>/`:
 
-#### Option A: Interactive execution (recommended)
-```bash
-sudo ./setup_vm.sh
-```
+| File | Content |
+|---|---|
+| `report.json` | Machine-readable: sample metadata and hashes, extension ID (from CRX3 header or manifest key), verdict (label, score 0-100, confidence + reason), ATT&CK techniques, findings, IOCs, file inventory |
+| `report.md` | Human summary. Every finding has severity, **confidence (high/medium/low) with the reason**, `path:line`, and a code snippet (2 lines of context, URLs defanged) |
+| `iocs.csv` | Domains, URLs, IPs, other extension IDs, with first location |
+| `rule.yar` | YARA rule from sample-specific domains/URLs, validated against the sample |
+| `sigma/proxy.yml`, `sigma/dns.yml` | Sigma rules for the network IOCs (common domains like googleapis/discord excluded) |
+| `unpacked/` | Extracted files; `unpacked/_deob/` has beautified copies of minified/obfuscated JS and `.wat` for WASM |
 
-The script will ask you to paste the complete Chrome Remote Desktop command.
+Confidence scale: **high** = confirmed by the code flow (e.g. `fetch()` result passed to `eval()` a few lines later); **medium** = dangerous pattern that also has common legitimate uses; **low** = heuristic only. For beautified files, `location.lines_refer_to` points at the `_deob` copy the line numbers belong to.
 
-#### Option B: Passing the complete command as argument
-```bash
-sudo ./setup_vm.sh 'DISPLAY= /opt/google/chrome-remote-desktop/start-host --code="YOUR_CODE_HERE" --redirect-url="https://remotedesktop.google.com/_/oauthredirect" --name=$(hostname)'
-```
+What it checks: dangerous permissions and host access, content scripts on all sites, CSP (`unsafe-eval`, remote script sources), `externally_connectable`, `update_url` outside the Web Store, `web_accessible_resources`; remote code (`eval`/`Function`/string timers/`importScripts`/remote `src`/`executeScript` fed by network data, `eval(atob(...))`), cookie/history/clipboard/screen collection, keyboard listeners and password fields in content scripts next to network sends, disabling other extensions, debugger, proxy changes, CSP header stripping, Discord/Telegram exfil endpoints, sandbox/headless checks, long delays, crypto addresses, obfuscation signals, WASM.
 
-#### Option C: Passing only the authorization code
-```bash
-sudo ./setup_vm.sh "4/0AX4XfWjLm9kR2pQvN8uY5tE3rS6wZ1oI7bV4cD0fG8hJ2kL9mN6pQ3rS5tU8vW1xY4zA7bC"
-```
+Limits: static only, so remotely delivered or delayed payloads are only visible as the loader pattern. No vulnerable-library database yet (retire.js needs network for its DB).
 
-## How to get the Chrome Remote Desktop code
+### Using the LLM safely
 
-1. Go to [https://remotedesktop.google.com/headless](https://remotedesktop.google.com/headless)
-2. Sign in with your Google account
-3. Click "Begin"
-4. Select "Next"
-5. Copy the complete command that appears (similar to the example below):
+`~/analysis/.claude/settings.json` applies to Claude Code sessions started in `~/analysis`: no `Bash`, `WebFetch`, `WebSearch` or MCP tools, no reads outside the folder, bypass mode disabled. Run `cd ~/analysis && claude` and point it at `out/<sample>/report.json`. `AGENTS.md` (shared by Antigravity and, via `~/.claude/CLAUDE.md`, Claude Code) tells both agents that sample content is untrusted data and never instructions. Check with `/status` and `/permissions` in Claude Code.
 
-```bash
-DISPLAY= /opt/google/chrome-remote-desktop/start-host --code="4/0AX4XfWjLm9kR2pQvN8uY5tE3rS6wZ1oI7bV4cD0fG8hJ2kL9mN6pQ3rS5tU8vW1xY4zA7bC" --redirect-url="https://remotedesktop.google.com/_/oauthredirect" --name=$(hostname)
-```
+## GUI mode
 
-## Execution example
+For loading an extension and watching its traffic. Use a **separate instance**, a throwaway Chrome profile (`~/launch-chrome-debug.sh` uses `/tmp/chrome-debug` with CDP on 9222), and only a test account. Never put LLM credentials or a real Google session on this instance, and destroy it after the session.
 
-```bash
-# Make executable
-chmod +x setup_vm.sh
-
-# Run
-sudo ./setup_vm.sh
-
-# When prompted, paste the complete command:
-Please paste the complete Chrome Remote Desktop command:
-Example: DISPLAY= /opt/google/chrome-remote-desktop/start-host --code="A/AAX4XfWjLm9kR2pQvN8uY5tE3rS6wZ1oI7bV4cD0fG8hJ2kL9mN6pQ3rS5tU8vW1xY4zA7bC" --redirect-url="https://remotedesktop.google.com/_/oauthredirect" --name=$(hostname)
-
-Enter command: [PASTE YOUR COMMAND HERE]
-```
-
-## Default settings
-
-- **Remote Desktop PIN**: `123456`
-- **Desktop environment**: XFCE4
+Burp is installed with a 15-minute time limit; if the PortSwigger download is not an installer, it is skipped with a warning.
 
 ### To manually set the proxy in chrome
 If you want to configure Chrome to use a local proxy (like Burp Suite or ZAP Proxy) on `127.0.0.1:8080`, you can execute the following command:
@@ -135,84 +110,17 @@ rm "${USER_HOME}/zap_ca_base64.txt" "${USER_HOME}/zap_ca.crt"
 ```
 *(For Burp Suite, you can export its certificate via the UI and import it using the `certutil` command above).*
 
-## What happens during execution
 
-1. ✅ Authorization code extraction
-2. ✅ Package list update
-3. ✅ Parallel download of all installers
-4. ✅ Google Chrome installation
-5. ✅ Chrome Remote Desktop installation
-6. ✅ Remote access configuration
-7. ✅ XFCE4 desktop environment installation
-8. ✅ Burp Suite installation
-9. ✅ ZAP Proxy installation
-10. ✅ Node.js, npm, uv, crx-analyzer, Antigravity CLI and Claude Code CLI setup, and Global Context (`AGENTS.md`) Configuration
-11. ✅ VS Code installation
-12. ✅ VS Code extensions: prettier, postfix, chrome-extension-api, chrome-extension-developer-tools
-
-## After installation
-
-1. **Access remotely**: Go to [https://remotedesktop.google.com](https://remotedesktop.google.com)
-2. **Sign in**: Use the same Google account used to generate the code
-3. **Connect**: Click on your VM name
-4. **Enter PIN**: Use `123456` (or change in script if desired)
-
-## Using Claude Code for sample analysis
-
-The script installs Claude Code for the remote desktop user and links its global instructions to the Antigravity `AGENTS.md` (`~/.claude/CLAUDE.md` imports it).
-
-Run `claude` once and sign in. Then put samples in `~/analysis/samples/` and start Claude Code **from `~/analysis`**:
+## Development
 
 ```bash
-cd ~/analysis && claude
+PYTHONPATH=static python3 -m unittest discover -s tests -v   # needs: pip install jsbeautifier yara-python
+docker build -t ext-static:latest static && bin/ext-analyze tests/samples/suspicious-helper-1.1
 ```
 
-`~/analysis/.claude/settings.json` restricts every session started there:
+`tests/samples/` holds small, inert, hand-written extensions (benign and "suspicious" patterns pointing at reserved `example.*` domains). Never commit real malware. CI runs the unit tests and shellcheck.
 
-- `Bash`, `WebFetch`, `WebSearch` and all MCP tools are removed, so no shell and no network.
-- It cannot read files outside `~/analysis`, so it cannot read `~/.claude`, `~/.gemini` or other credentials.
-- Bypass-permissions mode is disabled.
+## Default settings
 
-Extension code is untrusted input and can contain text written to manipulate an AI agent. These restrictions limit what injected instructions can do. Start Claude from another folder only for general research, never with samples in it.
-
-To check that the restrictions are active, run `/status` inside Claude Code (the `Setting sources` line should list project settings) and `/permissions`.
-
-## Troubleshooting
-
-### Script fails to extract code
-- Check if the command contains `--code="..."`
-- Make sure quotes are included
-
-### Chrome Remote Desktop doesn't start
-- Check if you have sudo permissions
-- Confirm the code hasn't expired (codes have limited validity)
-
-### Is it stuck or still working?
-- The script prints the full output of every step and also writes it to `/var/log/minimal-linux-setup.log` (root only).
-- From a second SSH session: `sudo tail -f /var/log/minimal-linux-setup.log`
-- apt gives up on a stalled mirror after 30 s per attempt (3 retries) instead of hanging forever.
-
-### Slow downloads
-- Check your internet connection
-
-## Project structure
-
-```
-script-linux/
-├── setup_vm.sh    # Main script
-└── README.md      # This file
-```
-
-## Important notes
-
-- ⚠️ **Always run with sudo**: The script needs administrative privileges
-- ⚠️ **Temporary code**: Chrome Remote Desktop codes expire quickly
-- ⚠️ **Connectivity**: Make sure you have good connection for downloads
-- ✅ **Security**: Change the default PIN if necessary
-
-## Estimated execution time
-
-- **With good connection**: 2-5 minutes
-- **With slow connection**: 6-10 minutes
-
-The script shows the total execution time at the end.
+- **Remote Desktop PIN**: `123456` (change `PRE_CONFIGURED_PIN` in `setup_vm.sh`)
+- **Timezone**: Europe/Lisbon

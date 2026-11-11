@@ -1,0 +1,21 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install analyzer deps
+        run: pip install jsbeautifier==1.15.1 yara-python==4.5.4
+      - name: Unit tests (synthetic samples)
+        run: PYTHONPATH=static python -m unittest discover -s tests -v
+      - name: shellcheck
+        run: shellcheck -S error setup_vm.sh bin/ext-analyze

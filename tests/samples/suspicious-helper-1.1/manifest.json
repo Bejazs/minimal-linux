@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Example Helper",
+  "version": "1.1.0",
+  "update_url": "https://updates.example.net/u.xml",
+  "permissions": ["storage", "cookies", "scripting", "management"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "bg.js" },
+  "content_scripts": [
+    { "matches": ["<all_urls>"], "js": ["js/cs.js"], "run_at": "document_start", "all_frames": true }
+  ]
+}

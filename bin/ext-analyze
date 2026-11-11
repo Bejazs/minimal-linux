@@ -1,0 +1,47 @@
+#!/bin/bash
+# Static analysis of Chrome extensions in a throwaway, offline container.
+# The extension is only read, never executed.
+#
+#   ext-analyze sample.crx [more.crx folder/ ...]
+#   ext-analyze --diff old.crx new.crx
+#
+# Env: EXT_ANALYZE_OUT (default ~/analysis/out), EXT_ANALYZE_IMAGE (default ext-static:latest)
+set -euo pipefail
+
+OUT="${EXT_ANALYZE_OUT:-$HOME/analysis/out}"
+IMAGE="${EXT_ANALYZE_IMAGE:-ext-static:latest}"
+
+usage() { sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+[ $# -eq 0 ] && usage 1
+case "${1:-}" in -h|--help) usage 0 ;; esac
+
+DIFF=()
+if [ "$1" = "--diff" ]; then
+  [ $# -eq 3 ] || { echo "usage: ext-analyze --diff OLD NEW" >&2; exit 1; }
+  DIFF=(--diff); shift
+fi
+
+mkdir -p "$OUT"
+MOUNTS=()
+ARGS=()
+i=0
+for s in "$@"; do
+  [ -e "$s" ] || { echo "ext-analyze: not found: $s" >&2; exit 1; }
+  abs="$(realpath "$s")"
+  # each sample is mounted read-only at its own path inside the container
+  MOUNTS+=(-v "$abs:/in/$i/$(basename "$abs"):ro")
+  ARGS+=("/in/$i/$(basename "$abs")")
+  i=$((i + 1))
+done
+
+OUT_REAL="$(realpath "$OUT")"
+# Container paths (/out/...) are rewritten to host paths in the summary.
+docker run --rm \
+  --network none \
+  --read-only --tmpfs /tmp:rw,size=256m \
+  --cap-drop ALL --security-opt no-new-privileges \
+  --pids-limit 256 --memory 1g --cpus 1 \
+  --user "$(id -u):$(id -g)" \
+  "${MOUNTS[@]}" \
+  -v "$OUT_REAL:/out" \
+  "$IMAGE" "${DIFF[@]}" "${ARGS[@]}" 2>&1 | sed "s#/out/#$OUT_REAL/#g"
