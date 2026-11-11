@@ -62,6 +62,13 @@ else
     echo "SecLists installation will be skipped."
 fi
 
+# Log everything from here on (screen + file). Started after the prompts so the
+# Chrome Remote Desktop code is not written to the log.
+LOG_FILE="/var/log/minimal-linux-setup.log"
+sudo touch "${LOG_FILE}" && sudo chmod 600 "${LOG_FILE}"
+exec > >(tee -a "${LOG_FILE}") 2>&1
+echo "=== setup_vm.sh started $(date -Is) — full log: ${LOG_FILE} ==="
+
 # Start timer now
 start_time=$(date +%s)
 
@@ -71,15 +78,17 @@ CHROME_REMOTE_USER_NAME="${SUDO_USER}"
 
 # Use the distro's apt-get. apt-fast was dropped: its PPA needs the Launchpad API,
 # which times out on networks with restricted egress, and the speed-up is small here.
-APT_INSTALL_CMD="apt-get"
+# Non-interactive, with visible progress, and with network timeouts/retries so a
+# stalled mirror fails after a while instead of hanging forever.
+APT_INSTALL_CMD="env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=3"
 echo "Updating package lists..."
-sudo ${APT_INSTALL_CMD} update -yqq
+sudo ${APT_INSTALL_CMD} update
 
 # Download all files upfront in parallel - Chrome Remote Desktop, Google Chrome Stable, VS Code, Burp Suite Community Edition.
 echo "Downloading installation files in parallel..."
-wget -q "https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb" -O google-chrome-stable_current_amd64.deb &
-wget -q "https://dl.google.com/linux/direct/chrome-remote-desktop_current_amd64.deb" -O chrome-remote-desktop_current_amd64.deb &
-wget -q "https://portswigger.net/burp/releases/startdownload?product=community&type=Linux" -O burpsuite &
+wget -nv "https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb" -O google-chrome-stable_current_amd64.deb &
+wget -nv "https://dl.google.com/linux/direct/chrome-remote-desktop_current_amd64.deb" -O chrome-remote-desktop_current_amd64.deb &
+wget -nv "https://portswigger.net/burp/releases/startdownload?product=community&type=Linux" -O burpsuite &
 wait
 for f in google-chrome-stable_current_amd64.deb chrome-remote-desktop_current_amd64.deb burpsuite; do
   if [ ! -s "$f" ]; then
@@ -91,7 +100,7 @@ echo "Downloads completed."
 
 # Install Google Chrome Stable
 echo "Installing Google Chrome Stable..."
-sudo ${APT_INSTALL_CMD} install -yqq "./google-chrome-stable_current_amd64.deb"
+sudo ${APT_INSTALL_CMD} install -y "./google-chrome-stable_current_amd64.deb"
 rm "./google-chrome-stable_current_amd64.deb"
 
 # Configure Chrome Enterprise Policies for FoxyProxy
@@ -108,7 +117,7 @@ EOF
 
 # Install Chrome Remote Desktop
 echo "Installing Chrome Remote Desktop..."
-sudo ${APT_INSTALL_CMD} install -yqq "./chrome-remote-desktop_current_amd64.deb"
+sudo ${APT_INSTALL_CMD} install -y "./chrome-remote-desktop_current_amd64.deb"
 rm "./chrome-remote-desktop_current_amd64.deb"
 
 # Start Chrome Remote Desktop host if code is provided
@@ -125,7 +134,7 @@ fi
 
 # Install packages Gui
 echo "Installing minimal desktop environment and applications..."
-sudo ${APT_INSTALL_CMD} install -yqq xfce4 --no-install-recommends network-manager file-roller dbus-x11 fonts-wqy-microhei fonts-wqy-zenhei fonts-noto-cjk git
+sudo ${APT_INSTALL_CMD} install -y xfce4 --no-install-recommends network-manager file-roller dbus-x11 fonts-wqy-microhei fonts-wqy-zenhei fonts-noto-cjk git
 wait
 echo "GUI installation completed."
 
@@ -137,12 +146,12 @@ rm burpsuite
 
 # Install Java, OpenJFX (for ZAP Browser View) and libnss3-tools (needed for ZAP Proxy)
 echo "Installing default-jre, openjfx and libnss3-tools..."
-sudo ${APT_INSTALL_CMD} install -yqq default-jre openjfx libnss3-tools
+sudo ${APT_INSTALL_CMD} install -y default-jre openjfx libnss3-tools
 
 # Download ZAP Proxy
 echo "Downloading ZAP Proxy..."
-ZAP_URL=$(curl -s https://api.github.com/repos/zaproxy/zaproxy/releases/latest | grep browser_download_url | grep Linux | cut -d '"' -f 4)
-wget -q "$ZAP_URL" -O zap.tar.gz
+ZAP_URL=$(curl -sS https://api.github.com/repos/zaproxy/zaproxy/releases/latest | grep browser_download_url | grep Linux | cut -d '"' -f 4)
+wget -nv "$ZAP_URL" -O zap.tar.gz
 
 echo "Extracting ZAP Proxy..."
 sudo tar -xzf zap.tar.gz -C /opt/
@@ -169,13 +178,13 @@ DESKTOP
 
 # Install ZAP Addons: Browser View (HTML render) and Wappalyzer
 echo "Installing ZAP Addons (Browser View, Wappalyzer)..."
-sudo -u ${CHROME_REMOTE_USER_NAME} /opt/zaproxy/zap.sh -cmd -addoninstall browserView -addoninstall wappalyzer > /dev/null 2>&1
+sudo -u ${CHROME_REMOTE_USER_NAME} /opt/zaproxy/zap.sh -cmd -addoninstall browserView -addoninstall wappalyzer
 
 
 # Install Node.js (v20)
 echo "Installing Node.js 20.x..."
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo ${APT_INSTALL_CMD} install -yqq nodejs
+sudo ${APT_INSTALL_CMD} install -y nodejs
 
 # Install uv (Python package manager)
 echo "Installing uv..."
