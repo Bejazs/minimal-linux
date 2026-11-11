@@ -16,7 +16,6 @@ This script automates the installation and configuration of a Linux virtual mach
 - **Burp Suite Community Edition** - Web security testing tool
 - **ZAP Proxy (Zed Attack Proxy)** - Web security testing tool
 - **Visual Studio Code** - Code editor
-- **apt-fast** - Accelerated package manager
 - **Antigravity CLI** - Command line tool for Antigravity models
 - **Claude Code CLI** - Anthropic's CLI agent, sharing the same threat-hunting instructions (`AGENTS.md`)
 - **uv** - Extremely fast Python package installer and resolver
@@ -139,7 +138,7 @@ rm "${USER_HOME}/zap_ca_base64.txt" "${USER_HOME}/zap_ca.crt"
 ## What happens during execution
 
 1. ✅ Authorization code extraction
-2. ✅ apt-fast installation for faster downloads
+2. ✅ Package list update
 3. ✅ Parallel download of all installers
 4. ✅ Google Chrome installation
 5. ✅ Chrome Remote Desktop installation
@@ -189,7 +188,6 @@ To check that the restrictions are active, run `/status` inside Claude Code (the
 - Confirm the code hasn't expired (codes have limited validity)
 
 ### Slow downloads
-- The script automatically installs apt-fast to speed up downloads
 - Check your internet connection
 
 ## Project structure
