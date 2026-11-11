@@ -42,8 +42,9 @@ Output per sample in `~/analysis/out/<name>-<sha256[:12]>/`:
 
 | File | Content |
 |---|---|
-| `report.json` | Machine-readable: sample metadata and hashes, extension ID (from CRX3 header or manifest key), verdict (label, score 0-100, confidence + reason), ATT&CK techniques, findings, IOCs, file inventory |
-| `report.md` | Human summary. Every finding has severity, **confidence (high/medium/low) with the reason**, `path:line`, and a code snippet (2 lines of context, URLs defanged) |
+| `report.json` | Machine-readable: sample metadata and hashes, extension ID (from CRX3 header or manifest key), verdict (`score_v0.2`; `score_v0.1` kept beside it for comparison), ATT&CK techniques, findings (each with `reachability`), reachability summary, IOCs, file inventory |
+| `behaviors.json` | Entry points, reachable/unreachable files and functions, source → sink data flows, and the combination rules that fired |
+| `report.md` | Human summary. Every finding has severity, **confidence (high/medium/low) with the reason**, `path:line`, reachability, and a code snippet (2 lines of context, URLs defanged). Findings in code no entry point reaches are listed separately and not scored |
 | `iocs.csv` | Domains, URLs, IPs, other extension IDs, with first location, Tranco rank and URLhaus hits |
 | `rule.yar` | YARA rule from sample-specific domains/URLs, validated against the sample |
 | `sigma/proxy.yml`, `sigma/dns.yml` | Sigma rules for the network IOCs (common domains like googleapis/discord excluded) |
@@ -65,11 +66,21 @@ Downloads public lists to `~/.cache/ext-analyze/lists/`, which is mounted read-o
 
 URLhaus downloads need a free abuse.ch Auth-Key: save it in `~/.config/ext-analyze/urlhaus.key` (`chmod 600`). The key goes in the download URL, as abuse.ch requires, and is not printed. Without it URLhaus is skipped. The report lists which lists were used and their dates. Without any lists the analysis still runs, with a warning. Setup runs `--update-lists` once (Tranco + PSL).
 
+### Verdict (v0.2)
+
+The verdict comes from **combination rules** on data flows in reachable code, then from the score:
+
+- `malicious`: a critical combination rule fired, e.g. cookies or typed input sent to a third-party host, network data executed as code, or authenticated requests to remotely chosen URLs relayed back out;
+- `likely_malicious`: a remote command channel (periodic poll driving tabs/scripting), or score ≥ 70 with a high/high finding;
+- `suspicious`: score ≥ 30; `low_risk`: below.
+
+Reachability starts from the manifest's entry points (background, content scripts, extension pages, `web_accessible_resources`). Findings in code nothing reaches are kept in the report but do not count. Every rule, its closest legitimate pattern and its limits are in [docs/rules.md](docs/rules.md). The previous method stays in `report.json` as `score_v0.1`.
+
 Confidence scale: **high** = confirmed by the code flow (e.g. `fetch()` result passed to `eval()` a few lines later); **medium** = dangerous pattern that also has common legitimate uses; **low** = heuristic only. For beautified files, `location.lines_refer_to` points at the `_deob` copy the line numbers belong to.
 
 What it checks: dangerous permissions and host access, content scripts on all sites, CSP (`unsafe-eval`, remote script sources), `externally_connectable`, `update_url` outside the Web Store, `web_accessible_resources`; remote code (`eval`/`Function`/string timers/`importScripts`/remote `src`/`executeScript` fed by network data, `eval(atob(...))`), cookie/history/clipboard/screen collection, keyboard listeners and password fields in content scripts next to network sends, disabling other extensions, debugger, proxy changes, CSP header stripping, Discord/Telegram exfil endpoints, sandbox/headless checks, long delays, crypto addresses, obfuscation signals, WASM.
 
-Limits: static only, so remotely delivered or delayed payloads are only visible as the loader pattern. No vulnerable-library database yet (retire.js needs network for its DB).
+Limits: static only, so remotely delivered or delayed payloads are only visible as the loader pattern. Data flows are tracked inside a function, its callbacks and one call deep, not through storage between runs (see docs/rules.md). No vulnerable-library database yet (retire.js needs network for its DB).
 
 ### Using the LLM safely
 
@@ -130,11 +141,11 @@ rm "${USER_HOME}/zap_ca_base64.txt" "${USER_HOME}/zap_ca.crt"
 ## Development
 
 ```bash
-PYTHONPATH=static python3 -m unittest discover -s tests -v   # needs: pip install jsbeautifier yara-python
+PYTHONPATH=static python3 -m unittest discover -s tests -v   # needs: pip install jsbeautifier yara-python tree-sitter tree-sitter-javascript
 docker build -t ext-static:latest static && bin/ext-analyze tests/samples/suspicious-helper-1.1
 ```
 
-`tests/samples/` holds small, inert, hand-written extensions (benign and "suspicious" patterns pointing at reserved `example.*` domains). Never commit real malware. CI runs the unit tests and shellcheck.
+`tests/samples/` holds small, inert, hand-written extensions (benign and "suspicious" patterns pointing at reserved `example.*` domains). `tests/cases/` has one positive and one negative synthetic case per combination rule, plus a dead-code case. Never commit real malware. CI runs the unit tests and shellcheck.
 
 ## Default settings
 
