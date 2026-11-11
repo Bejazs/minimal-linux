@@ -24,7 +24,7 @@ The script asks for the Chrome Remote Desktop command from <https://remotedeskto
 
 Everything after the prompts is shown on screen and written to `/var/log/minimal-linux-setup.log` (root only; the CRD code is not logged). Follow it from a second SSH session with `sudo tail -f /var/log/minimal-linux-setup.log`. apt gives up on a stalled mirror after 30 s per attempt (3 retries).
 
-Outbound access needed: Ubuntu mirrors, dl.google.com, snapcraft. Static also needs Docker Hub, deb.debian.org, PyPI, antigravity.google and claude.ai; gui also needs portswigger.net, api.github.com/github.com, deb.nodesource.com and astral.sh.
+Outbound access needed: Ubuntu mirrors, dl.google.com, snapcraft. Static also needs Docker Hub, deb.debian.org, PyPI, antigravity.google, claude.ai, tranco-list.eu, publicsuffix.org and (optional) urlhaus-api.abuse.ch; gui also needs portswigger.net, api.github.com/github.com, deb.nodesource.com and astral.sh.
 
 ## Static mode: `ext-analyze`
 
@@ -44,10 +44,26 @@ Output per sample in `~/analysis/out/<name>-<sha256[:12]>/`:
 |---|---|
 | `report.json` | Machine-readable: sample metadata and hashes, extension ID (from CRX3 header or manifest key), verdict (label, score 0-100, confidence + reason), ATT&CK techniques, findings, IOCs, file inventory |
 | `report.md` | Human summary. Every finding has severity, **confidence (high/medium/low) with the reason**, `path:line`, and a code snippet (2 lines of context, URLs defanged) |
-| `iocs.csv` | Domains, URLs, IPs, other extension IDs, with first location |
+| `iocs.csv` | Domains, URLs, IPs, other extension IDs, with first location, Tranco rank and URLhaus hits |
 | `rule.yar` | YARA rule from sample-specific domains/URLs, validated against the sample |
 | `sigma/proxy.yml`, `sigma/dns.yml` | Sigma rules for the network IOCs (common domains like googleapis/discord excluded) |
 | `unpacked/` | Extracted files; `unpacked/_deob/` has beautified copies of minified/obfuscated JS and `.wat` for WASM |
+
+### Domain lists (offline enrichment)
+
+```bash
+ext-analyze --update-lists      # on the host, with network; re-run whenever you want fresher data
+```
+
+Downloads public lists to `~/.cache/ext-analyze/lists/`, which is mounted read-only into the container (still `--network none`). Domains are checked locally, so no IOC is sent to any service.
+
+| List | Source | Used for |
+|---|---|---|
+| Tranco top 1M | tranco-list.eu | `tranco_rank`; registrable domains in the top 10 000 are marked `common` (kept as IOCs, left out of YARA/Sigma) |
+| Public Suffix List | publicsuffix.org | `registrable_domain` (`a.b.example.co.uk` → `example.co.uk`) |
+| URLhaus (recent) | abuse.ch | exact host match → `urlhaus_hits` and a high/high `IOC-URLHAUS` finding; never `common` |
+
+URLhaus downloads need a free abuse.ch Auth-Key: save it in `~/.config/ext-analyze/urlhaus.key` (`chmod 600`). The key goes in the download URL, as abuse.ch requires, and is not printed. Without it URLhaus is skipped. The report lists which lists were used and their dates. Without any lists the analysis still runs, with a warning. Setup runs `--update-lists` once (Tranco + PSL).
 
 Confidence scale: **high** = confirmed by the code flow (e.g. `fetch()` result passed to `eval()` a few lines later); **medium** = dangerous pattern that also has common legitimate uses; **low** = heuristic only. For beautified files, `location.lines_refer_to` points at the `_deob` copy the line numbers belong to.
 

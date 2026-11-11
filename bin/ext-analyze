@@ -4,16 +4,59 @@
 #
 #   ext-analyze sample.crx [more.crx folder/ ...]
 #   ext-analyze --diff old.crx new.crx
+#   ext-analyze --update-lists   (on the host, with network: Tranco, Public Suffix List,
+#                                 URLhaus if an abuse.ch key is in ~/.config/ext-analyze/urlhaus.key)
 #
-# Env: EXT_ANALYZE_OUT (default ~/analysis/out), EXT_ANALYZE_IMAGE (default ext-static:latest)
+# Env: EXT_ANALYZE_OUT (default ~/analysis/out), EXT_ANALYZE_IMAGE (default ext-static:latest),
+#      EXT_ANALYZE_LISTS (default ~/.cache/ext-analyze/lists)
 set -euo pipefail
 
 OUT="${EXT_ANALYZE_OUT:-$HOME/analysis/out}"
 IMAGE="${EXT_ANALYZE_IMAGE:-ext-static:latest}"
+LISTS="${EXT_ANALYZE_LISTS:-$HOME/.cache/ext-analyze/lists}"
+URLHAUS_KEY_FILE="${HOME}/.config/ext-analyze/urlhaus.key"
 
-usage() { sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 [ $# -eq 0 ] && usage 1
 case "${1:-}" in -h|--help) usage 0 ;; esac
+
+# Download one list to a temp file and move it into place only if it is non-empty,
+# so a failed download keeps the previous copy.
+fetch() {  # fetch NAME URL FILE
+  local tmp="$LISTS/.$3.tmp"
+  if curl -fsSL --retry 2 --max-time 300 -o "$tmp" "$2" && [ -s "$tmp" ]; then
+    mv "$tmp" "$LISTS/$3"
+    META+=("\"$1\": \"$(date -u +%Y-%m-%d)\"")
+    echo "  ok   $1"
+  else
+    rm -f "$tmp"
+    echo "  FAIL $1 (keeping previous copy if any)" >&2
+  fi
+}
+
+if [ "$1" = "--update-lists" ]; then
+  mkdir -p "$LISTS"
+  META=()
+  echo "Updating domain lists in $LISTS ..."
+  fetch tranco "https://tranco-list.eu/top-1m.csv.zip" tranco-top-1m.csv.zip
+  fetch psl "https://publicsuffix.org/list/public_suffix_list.dat" public_suffix_list.dat
+  if [ -s "$URLHAUS_KEY_FILE" ]; then
+    # abuse.ch puts the Auth-Key in the URL path; the URL is never printed.
+    fetch urlhaus "https://urlhaus-api.abuse.ch/v2/files/exports/$(tr -d '[:space:]' < "$URLHAUS_KEY_FILE")/recent.csv" urlhaus.csv
+  else
+    echo "  skip urlhaus (no key: put your free abuse.ch Auth-Key in $URLHAUS_KEY_FILE)"
+  fi
+  # keep dates of lists that were not refreshed this time
+  if [ -f "$LISTS/meta.json" ]; then
+    for k in tranco psl urlhaus; do
+      case " ${META[*]-} " in *"\"$k\""*) continue ;; esac
+      old=$(grep -o "\"$k\": \"[0-9-]*\"" "$LISTS/meta.json" || true)
+      [ -n "$old" ] && META+=("$old")
+    done
+  fi
+  (IFS=,; echo "{${META[*]}}") > "$LISTS/meta.json"
+  exit 0
+fi
 
 DIFF=()
 if [ "$1" = "--diff" ]; then
@@ -34,6 +77,12 @@ for s in "$@"; do
   i=$((i + 1))
 done
 
+LIST_ARGS=()
+if [ -d "$LISTS" ]; then
+  MOUNTS+=(-v "$(realpath "$LISTS"):/lists:ro")
+  LIST_ARGS=(--lists /lists)
+fi
+
 OUT_REAL="$(realpath "$OUT")"
 # Container paths (/out/...) are rewritten to host paths in the summary.
 docker run --rm \
@@ -44,4 +93,4 @@ docker run --rm \
   --user "$(id -u):$(id -g)" \
   "${MOUNTS[@]}" \
   -v "$OUT_REAL:/out" \
-  "$IMAGE" "${DIFF[@]}" "${ARGS[@]}" 2>&1 | sed "s#/out/#$OUT_REAL/#g"
+  "$IMAGE" "${LIST_ARGS[@]}" "${DIFF[@]}" "${ARGS[@]}" 2>&1 | sed "s#/out/#$OUT_REAL/#g"

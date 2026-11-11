@@ -14,7 +14,8 @@ import shutil
 import subprocess
 import sys
 
-from . import __version__, code_scan, emit, iocs, manifest, score
+from . import __version__, code_scan, emit, iocs, lists, manifest, score
+from .common import finding
 from .unpack import UnpackError, inventory, unpack
 
 
@@ -44,7 +45,7 @@ def _wasm_to_wat(unpacked, deob):
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-def analyze_one(sample, out_root):
+def analyze_one(sample, out_root, lists_dir=None):
     tmp = os.path.join(out_root, ".tmp-" + _slug(os.path.basename(sample.rstrip("/"))))
     shutil.rmtree(tmp, ignore_errors=True)
     unpacked = os.path.join(tmp, "unpacked")
@@ -59,6 +60,17 @@ def analyze_one(sample, out_root):
     _wasm_to_wat(unpacked, deob)
     ext_id = meta.get("crx_id") or (m_meta or {}).get("id_from_key")
     found_iocs = iocs.extract(unpacked, self_ids={ext_id} if ext_id else ())
+    lists_info, lists_warn = lists.enrich(found_iocs["domains"], lists_dir)
+    meta["warnings"] = list(meta["warnings"]) + lists_warn
+    for d in found_iocs["domains"]:
+        if d.get("urlhaus_hits"):
+            path, _, ln = d["first_seen"].rpartition(":")
+            findings.append(finding(
+                f"IOC-URLHAUS-{len(findings) + 1}", f"Domain {d['value']} is listed in URLhaus",
+                "high", "high", f"exact host match in URLhaus ({d['urlhaus_hits']} URL(s)); "
+                f"list date {lists_info['meta'].get('urlhaus', 'unknown')}",
+                path=path or None, line_start=int(ln) if ln.isdigit() else None,
+                attack=["T1071.001"], category="ioc", match=d["value"]))
     findings = emit.sort_findings(findings)
     verdict = score.score(findings)
 
@@ -86,6 +98,7 @@ def analyze_one(sample, out_root):
         "manifest": m_meta,
         "findings": findings,
         "iocs": found_iocs,
+        "lists": lists_info,
         "files": file_info,
         "inventory": files,
         "warnings": meta["warnings"],
@@ -153,6 +166,7 @@ def main(argv=None):
     ap.add_argument("samples", nargs="*", help=".crx, .zip or unpacked folder")
     ap.add_argument("--diff", nargs=2, metavar=("OLD", "NEW"), help="compare two versions of the same extension")
     ap.add_argument("--out", default="/out", help="output root (default /out)")
+    ap.add_argument("--lists", default=None, help="folder with Tranco/PSL/URLhaus lists (optional)")
     args = ap.parse_args(argv)
     if not args.samples and not args.diff:
         ap.error("give at least one sample, or --diff OLD NEW")
@@ -163,7 +177,7 @@ def main(argv=None):
         if sample in results:
             continue
         try:
-            out_dir, rep = analyze_one(sample, args.out)
+            out_dir, rep = analyze_one(sample, args.out, args.lists)
             results[sample] = rep
             v = rep["verdict"]
             print(f"{v['label']:<17} {v['score']:>3}/100  conf={v['confidence']:<6} "

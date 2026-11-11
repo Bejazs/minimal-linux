@@ -148,8 +148,13 @@ rm "./chrome-remote-desktop_current_amd64.deb"
 
 if [ -n "${CHROME_REMOTE_DESKTOP_CODE}" ]; then
   echo "Starting Chrome Remote Desktop..."
-  DISPLAY= /opt/google/chrome-remote-desktop/start-host --code="${CHROME_REMOTE_DESKTOP_CODE}" --redirect-url="https://remotedesktop.google.com/_/oauthredirect" --name="$(hostname)" --user-name="${CHROME_REMOTE_USER_NAME}" --pin="${PRE_CONFIGURED_PIN}"
-  echo "Finish Starting Chrome Remote Desktop"
+  if DISPLAY= /opt/google/chrome-remote-desktop/start-host --code="${CHROME_REMOTE_DESKTOP_CODE}" --redirect-url="https://remotedesktop.google.com/_/oauthredirect" --name="$(hostname)" --user-name="${CHROME_REMOTE_USER_NAME}" --pin="${PRE_CONFIGURED_PIN}"; then
+    echo "Finish Starting Chrome Remote Desktop"
+  else
+    echo "WARNING: Chrome Remote Desktop host registration FAILED (an 'OAuth error' usually means the code expired or was already used)."
+    echo "         The rest of the setup continues. Afterwards, generate a NEW code and run as ${CHROME_REMOTE_USER_NAME} (not root):"
+    echo "         DISPLAY= /opt/google/chrome-remote-desktop/start-host --code=\"<new code>\" --redirect-url=\"https://remotedesktop.google.com/_/oauthredirect\" --name=\$(hostname) --pin=${PRE_CONFIGURED_PIN}"
+  fi
 else
   echo "Chrome Remote Desktop start skipped because code was not provided."
 fi
@@ -185,6 +190,9 @@ install_static() {
   if ! sudo docker build -t ext-static:latest /opt/minimal-linux/static; then
     echo "Error: building ext-static failed. Re-run later with: sudo docker build -t ext-static:latest /opt/minimal-linux/static"
   fi
+  echo "Downloading domain lists (Tranco, Public Suffix List) for offline enrichment..."
+  as_user env HOME="${USER_HOME}" /opt/minimal-linux/bin/ext-analyze --update-lists \
+    || echo "Warning: domain list download failed. Re-run later with: ext-analyze --update-lists"
 
   echo "Installing Antigravity CLI..."
   curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- -d /usr/local/bin
