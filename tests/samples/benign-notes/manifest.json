@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "Benign Notes",
+  "version": "1.0.0",
+  "description": "Keeps short notes in local storage.",
+  "permissions": ["storage"],
+  "action": { "default_popup": "popup.html" }
+}
