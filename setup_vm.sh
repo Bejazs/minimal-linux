@@ -69,25 +69,11 @@ start_time=$(date +%s)
 # Get the user name and remote desktop default pin
 CHROME_REMOTE_USER_NAME="${SUDO_USER}"
 
-APT_INSTALL_CMD="apt"
-
-
-# Update the packages lists and install apt-fast
-echo "Installing apt-fast..."
-sudo add-apt-repository ppa:apt-fast/stable -y
+# Use the distro's apt-get. apt-fast was dropped: its PPA needs the Launchpad API,
+# which times out on networks with restricted egress, and the speed-up is small here.
+APT_INSTALL_CMD="apt-get"
+echo "Updating package lists..."
 sudo ${APT_INSTALL_CMD} update -yqq
-echo debconf apt-fast/maxdownloads string 16 | sudo debconf-set-selections
-echo debconf apt-fast/dlflag boolean true | sudo debconf-set-selections
-echo debconf apt-fast/aptmanager string apt-get | sudo debconf-set-selections
-sudo ${APT_INSTALL_CMD} install apt-fast -yqq
-
-# Check again if apt-fast is installed after attempting installation
-if command -v apt-fast &> /dev/null; then
-  APT_INSTALL_CMD="apt-fast"
-  echo "apt-fast installed successfully. Using apt-fast for package installations."
- else
-  echo "apt-fast installation failed. Using apt for package installations."
-fi
 
 # Download all files upfront in parallel - Chrome Remote Desktop, Google Chrome Stable, VS Code, Burp Suite Community Edition.
 echo "Downloading installation files in parallel..."
@@ -95,6 +81,12 @@ wget -q "https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.d
 wget -q "https://dl.google.com/linux/direct/chrome-remote-desktop_current_amd64.deb" -O chrome-remote-desktop_current_amd64.deb &
 wget -q "https://portswigger.net/burp/releases/startdownload?product=community&type=Linux" -O burpsuite &
 wait
+for f in google-chrome-stable_current_amd64.deb chrome-remote-desktop_current_amd64.deb burpsuite; do
+  if [ ! -s "$f" ]; then
+    echo "Error: download of $f failed (missing or empty). Check outbound access to dl.google.com and portswigger.net."
+    exit 1
+  fi
+done
 echo "Downloads completed."
 
 # Install Google Chrome Stable
