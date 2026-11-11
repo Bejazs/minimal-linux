@@ -12,7 +12,7 @@ import tempfile
 import unittest
 import zipfile
 
-from extanalyzer import cli, unpack
+from extanalyzer import cli, lists, unpack
 from extanalyzer.common import defang
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -136,6 +136,51 @@ class AnalyzerTests(unittest.TestCase):
     def test_defang_keeps_code_readable(self):
         self.assertEqual(defang("chrome.cookies.getAll(r.text())"), "chrome.cookies.getAll(r.text())")
         self.assertEqual(defang('fetch("https://a.example.net/x.js")'), 'fetch("hxxps://a[.]example[.]net/x.js")')
+
+    def _make_lists(self):
+        d = os.path.join(self.out, "lists")
+        os.makedirs(d)
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("top-1m.csv", "1,google.com\n500,example.org\n")
+        with open(os.path.join(d, lists.TRANCO_FILE), "wb") as f:
+            f.write(buf.getvalue())
+        with open(os.path.join(d, lists.PSL_FILE), "w") as f:
+            f.write("// comment\ncom\nnet\norg\nuk\nco.uk\n*.ck\n!www.ck\n")
+        with open(os.path.join(d, lists.URLHAUS_FILE), "w") as f:
+            f.write('# comment\n"1","2026-11-01","https://cdn.example.net/p.js","online"\n')
+        with open(os.path.join(d, lists.META_FILE), "w") as f:
+            f.write('{"tranco": "2026-11-11", "psl": "2026-11-11", "urlhaus": "2026-11-11"}')
+        return d
+
+    def test_psl_registrable(self):
+        psl = lists.PSL("com\nuk\nco.uk\n*.ck\n!www.ck\n")
+        self.assertEqual(psl.registrable("a.b.example.co.uk"), "example.co.uk")
+        self.assertEqual(psl.registrable("x.foo.bar.ck"), "foo.bar.ck")
+        self.assertEqual(psl.registrable("www.ck"), "www.ck")
+        self.assertEqual(psl.registrable("cdn.example.com"), "example.com")
+
+    def test_domain_lists_enrichment(self):
+        d = self._make_lists()
+        out_dir, rep = cli.analyze_one(os.path.join(SAMPLES, "suspicious-helper-1.1"), self.out, d)
+        doms = {x["value"]: x for x in rep["iocs"]["domains"]}
+        self.assertEqual(doms["collect.example.org"]["tranco_rank"], 500)
+        self.assertTrue(doms["collect.example.org"]["common"])
+        self.assertEqual(doms["cdn.example.net"]["urlhaus_hits"], 1)
+        self.assertFalse(doms["cdn.example.net"]["common"])
+        self.assertIsNone(doms["updates.example.net"]["tranco_rank"])
+        hit = [f for f in rep["findings"] if f["id"].startswith("IOC-URLHAUS")]
+        self.assertEqual(len(hit), 1)
+        self.assertEqual((hit[0]["severity"], hit[0]["confidence"]), ("high", "high"))
+        self.assertEqual(sorted(rep["lists"]["loaded"]), ["psl", "tranco", "urlhaus"])
+        with open(os.path.join(out_dir, "report.md")) as f:
+            md = f.read()
+        self.assertIn("URLhaus: known malicious", md)
+        self.assertIn("Tranco #500", md)
+
+    def test_missing_lists_is_a_warning(self):
+        _, rep = self.run_one(os.path.join(SAMPLES, "benign-notes"))
+        self.assertTrue(any("--update-lists" in w for w in rep["warnings"]))
 
 
 if __name__ == "__main__":

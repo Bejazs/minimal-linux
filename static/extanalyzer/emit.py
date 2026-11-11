@@ -29,11 +29,12 @@ def write_json(report, out_dir):
 def write_iocs_csv(iocs, out_dir):
     with open(os.path.join(out_dir, "iocs.csv"), "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["type", "value", "defanged", "first_seen", "count", "common"])
+        w.writerow(["type", "value", "defanged", "first_seen", "count", "common", "tranco_rank", "urlhaus_hits"])
         for kind, key in (("domain", "domains"), ("url", "urls"), ("ip", "ips"), ("extension_id", "extension_ids")):
             for i in iocs[key]:
                 df = defang_domain(i["value"]) if kind in ("domain", "ip") else (defang(i["value"]) if kind == "url" else i["value"])
-                w.writerow([kind, i["value"], df, i["first_seen"], i["count"], i.get("common", False)])
+                w.writerow([kind, i["value"], df, i["first_seen"], i["count"], i.get("common", False),
+                            i.get("tranco_rank") or "", i.get("urlhaus_hits", "")])
 
 
 def _yara_str(s):
@@ -176,7 +177,17 @@ def write_markdown(report, out_dir):
     i = report["iocs"]
     md.append("## IOCs")
     for d in i["domains"]:
-        md.append(f"- domain `{defang_domain(d['value'])}`{' (common)' if d.get('common') else ''} — first seen {d['first_seen']}")
+        tags = []
+        if d.get("urlhaus_hits"):
+            tags.append("**URLhaus: known malicious**")
+        if d.get("tranco_rank"):
+            tags.append(f"Tranco #{d['tranco_rank']}")
+        elif "tranco_rank" in d:
+            tags.append("not in Tranco top 1M")
+        if d.get("common"):
+            tags.append("common")
+        tag = f" ({', '.join(tags)})" if tags else ""
+        md.append(f"- domain `{defang_domain(d['value'])}`{tag} — first seen {d['first_seen']}")
     for u in i["urls"][:50]:
         md.append(f"- url `{defang(u['value'])}` — {u['first_seen']}")
     for ip in i["ips"]:
@@ -194,6 +205,10 @@ def write_markdown(report, out_dir):
         md.append(f"- {y['path']} ({y['strings']} strings; validated against sample: {y['validated']})")
     for p in art.get("sigma", []):
         md.append(f"- {p}")
+    li = report.get("lists") or {}
+    if li.get("loaded"):
+        md.append("")
+        md.append("Domain lists: " + ", ".join(f"{n} ({li.get('meta', {}).get(n, 'date unknown')})" for n in li["loaded"]))
     if report.get("warnings"):
         md.append("")
         md.append("## Warnings")

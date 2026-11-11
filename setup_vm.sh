@@ -190,6 +190,9 @@ install_static() {
   if ! sudo docker build -t ext-static:latest /opt/minimal-linux/static; then
     echo "Error: building ext-static failed. Re-run later with: sudo docker build -t ext-static:latest /opt/minimal-linux/static"
   fi
+  echo "Downloading domain lists (Tranco, Public Suffix List) for offline enrichment..."
+  as_user env HOME="${USER_HOME}" /opt/minimal-linux/bin/ext-analyze --update-lists \
+    || echo "Warning: domain list download failed. Re-run later with: ext-analyze --update-lists"
 
   echo "Installing Antigravity CLI..."
   curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- -d /usr/local/bin
