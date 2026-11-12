@@ -43,7 +43,7 @@ Output per sample in `~/analysis/out/<name>-<sha256[:12]>/`:
 | File | Content |
 |---|---|
 | `report.json` | Machine-readable: sample metadata and hashes, extension ID (from CRX3 header or manifest key), verdict (`score_v0.2`; `score_v0.1` kept beside it for comparison), ATT&CK techniques, findings (each with `reachability`), reachability summary, IOCs, file inventory |
-| `behaviors.json` | Entry points, reachable/unreachable files and functions, source → sink data flows, and the combination rules that fired |
+| `behaviors.json` | Entry points, reachable/unreachable files and functions, source → sink data flows, the combination rules that fired and the detector matches (B1–B9) |
 | `report.md` | Human summary. Every finding has severity, **confidence (high/medium/low) with the reason**, `path:line`, reachability, and a code snippet (2 lines of context, URLs defanged). Findings in code no entry point reaches are listed separately and not scored |
 | `iocs.csv` | Domains, URLs, IPs, other extension IDs, with first location, Tranco rank and URLhaus hits |
 | `rule.yar` | YARA rule from sample-specific domains/URLs, validated against the sample |
@@ -71,8 +71,10 @@ URLhaus downloads need a free abuse.ch Auth-Key: save it in `~/.config/ext-analy
 The verdict comes from **combination rules** on data flows in reachable code, then from the score:
 
 - `malicious`: a critical combination rule fired, e.g. cookies or typed input sent to a third-party host, network data executed as code, or authenticated requests to remotely chosen URLs relayed back out;
-- `likely_malicious`: a remote command channel (periodic poll driving tabs/scripting), or score ≥ 70 with a high/high finding;
+- `likely_malicious`: a remote command channel (periodic poll, or socket/network data choosing tab/scripting actions), or score ≥ 70 with a high/high finding;
 - `suspicious`: score ≥ 30; `low_risk`: below.
+
+Nine **detectors** add findings (`DET-*`, `category: detector`): session data sent to non-primary hosts, credentialed requests to URLs from data, command dispatch on network data, weak origin checks in message handlers, hidden windows (with idle gating), identity-header rewriting (code and static rulesets), URLs/API names hidden with `fromCharCode`/arrays/`atob`/split strings (folded statically, never run), code injection, and dialogs combined with forced window focus.
 
 Reachability starts from the manifest's entry points (background, content scripts, extension pages, `web_accessible_resources`). Findings in code nothing reaches are kept in the report but do not count. Every rule, its closest legitimate pattern and its limits are in [docs/rules.md](docs/rules.md). The previous method stays in `report.json` as `score_v0.1`.
 

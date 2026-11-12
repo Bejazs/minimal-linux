@@ -14,7 +14,7 @@ import shutil
 import subprocess
 import sys
 
-from . import __version__, code_scan, combine, emit, flows, iocs, lists, manifest, reach, score
+from . import __version__, code_scan, combine, detectors, emit, flows, iocs, lists, manifest, reach, score
 from .common import finding, snippet
 from .unpack import UnpackError, inventory, unpack
 
@@ -148,7 +148,7 @@ def analyze_behaviors(unpacked, file_info, findings, lists_dir):
     if pkg is None:
         for f in findings:
             f["reachability"] = "unknown"
-        return {"reachability": None, "flows": [], "combinations": [],
+        return {"reachability": None, "flows": [], "combinations": [], "detectors": [],
                 "note": "tree-sitter not available: no reachability or flow analysis"}, []
     for f in findings:
         loc = f.get("location") or {}
@@ -160,8 +160,18 @@ def analyze_behaviors(unpacked, file_info, findings, lists_dir):
     primary = _primary_domains(unpacked, registrable)
     fl = flows.analyze(pkg, primary, registrable)
     b_findings, matches = combine.evaluate(fl)
+    d_findings, d_records = detectors.analyze(pkg, fl)
+    b_findings += d_findings
     for f in b_findings:
+        if not f.get("location") or not f["location"].get("line_start"):
+            continue
         text = pkg.text_used.get(f["location"]["path"], "")
+        if not text:      # e.g. a declarativeNetRequest ruleset (JSON)
+            try:
+                with open(os.path.join(unpacked, f["location"]["path"]), encoding="utf-8", errors="replace") as fh:
+                    text = fh.read(4 * 1024 * 1024)
+            except OSError:
+                text = ""
         if text:
             f["snippet"] = snippet(text.splitlines() or [""], f["location"]["line_start"])
             beaut = next((fi.get("beautified_path") for fi in file_info if fi["path"] == f["location"]["path"]), None)
@@ -172,8 +182,11 @@ def analyze_behaviors(unpacked, file_info, findings, lists_dir):
         "primary_domains": sorted(primary),
         "flows": [x.to_dict() for x in fl],
         "combinations": matches,
+        "detectors": d_records,
         "rules": {k: {kk: v[kk] for kk in ("title", "severity", "attack", "attack_gap", "why")}
                   for k, v in combine.RULES.items()},
+        "detector_definitions": {k: {kk: v[kk] for kk in ("plan", "title", "attack", "attack_gap", "why")}
+                                 for k, v in detectors.DETECTORS.items()},
     }, b_findings
 
 

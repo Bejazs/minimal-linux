@@ -26,12 +26,14 @@ ATTACK_NAMES = {
     "T1217": "Browser Information Discovery",
     "T1497.001": "Virtualization/Sandbox Evasion: System Checks",
     "T1497.003": "Virtualization/Sandbox Evasion: Time Based Evasion",
+    "T1497.002": "Virtualization/Sandbox Evasion: User Activity Based Checks",
     "T1528": "Steal Application Access Token",
     "T1539": "Steal Web Session Cookie",
     "T1557": "Adversary-in-the-Middle",
     "T1559": "Inter-Process Communication",
     "T1562": "Impair Defenses",
     "T1562.001": "Impair Defenses: Disable or Modify Tools",
+    "T1564.003": "Hide Artifacts: Hidden Window",
     "T1565": "Data Manipulation",
     "T1567": "Exfiltration Over Web Service",
 }
@@ -106,13 +108,14 @@ def score_v0_2(findings):
         base["top_findings"] = [f["id"] for f in crit[:5]] + [i for i in base["top_findings"]
                                                               if i not in {f["id"] for f in crit}][:max(0, 5 - len(crit))]
     else:
-        # a high-severity, high-confidence combination rule (e.g. COMB-C2) is never below likely_malicious
-        comb = [f for f in live if f.get("category") == "behavior" and f["severity"] == "high"
-                and f["confidence"] == "high"]
+        # a high/high combination rule (e.g. COMB-C2) or a detector marked verdict_floor (DET-CMD-DISPATCH)
+        # is never below likely_malicious
+        comb = [f for f in live if (f.get("category") == "behavior" or f.get("verdict_floor"))
+                and f["severity"] == "high" and f["confidence"] == "high"]
         if comb and base["label"] in ("low_risk", "suspicious"):
             base["label"] = "likely_malicious"
             base["score"] = max(base["score"], 70)
-            base["confidence_reason"] += "; raised by combination rule " + comb[0]["id"].rsplit("-", 1)[0]
+            base["confidence_reason"] += "; raised by " + comb[0]["id"].rsplit("-", 1)[0]
     base["rules_fired"] = sorted({f["id"].rsplit("-", 1)[0] for f in live if f.get("category") == "behavior"})
     base["unreachable_findings_excluded"] = unreachable
     base["version"] = "0.2"
