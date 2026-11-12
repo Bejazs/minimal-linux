@@ -4,6 +4,8 @@
 #
 #   ext-analyze sample.crx [more.crx folder/ ...]
 #   ext-analyze --diff old.crx new.crx
+#   ext-analyze --validate ~/corpus [--baseline old/results.json]
+#                                (corpus/{benign,malicious}/<category>/<sample>; metrics, no sample code)
 #   ext-analyze --update-lists   (on the host, with network: Tranco, Public Suffix List,
 #                                 URLhaus if an abuse.ch key is in ~/.config/ext-analyze/urlhaus.key)
 #
@@ -18,7 +20,7 @@ LISTS="${EXT_ANALYZE_LISTS:-$HOME/.cache/ext-analyze/lists}"
 INTEL="${EXT_ANALYZE_INTEL:-$HOME/analysis/intel}"
 URLHAUS_KEY_FILE="${HOME}/.config/ext-analyze/urlhaus.key"
 
-usage() { sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 [ $# -eq 0 ] && usage 1
 case "${1:-}" in -h|--help) usage 0 ;; esac
 
@@ -58,6 +60,33 @@ if [ "$1" = "--update-lists" ]; then
   fi
   (IFS=,; echo "{${META[*]}}") > "$LISTS/meta.json"
   exit 0
+fi
+
+if [ "$1" = "--validate" ]; then
+  [ $# -eq 2 ] || [ $# -eq 4 ] || { echo "usage: ext-analyze --validate CORPUS [--baseline results.json]" >&2; exit 1; }
+  [ -d "$2" ] || { echo "ext-analyze: corpus folder not found: $2" >&2; exit 1; }
+  VMOUNTS=(-v "$(realpath "$2"):/corpus:ro")
+  VARGS=(--validate /corpus)
+  if [ $# -eq 4 ]; then
+    [ "$3" = "--baseline" ] && [ -f "$4" ] || { echo "ext-analyze: --baseline needs a results.json file" >&2; exit 1; }
+    VMOUNTS+=(-v "$(realpath "$4"):/baseline.json:ro")
+    VARGS+=(--baseline /baseline.json)
+  fi
+  VOUT="$OUT/validation-$(date -u +%Y%m%d-%H%M%S)"
+  mkdir -p "$VOUT"
+  [ -d "$LISTS" ] && VMOUNTS+=(-v "$(realpath "$LISTS"):/lists:ro") && VARGS+=(--lists /lists)
+  [ -d "$INTEL" ] && VMOUNTS+=(-v "$(realpath "$INTEL"):/intel-local:ro") && VARGS+=(--intel /intel-local)
+  VOUT_REAL="$(realpath "$VOUT")"
+  docker run --rm \
+    --network none \
+    --read-only --tmpfs /tmp:rw,size=256m \
+    --cap-drop ALL --security-opt no-new-privileges \
+    --pids-limit 256 --memory 1g --cpus 1 \
+    --user "$(id -u):$(id -g)" \
+    "${VMOUNTS[@]}" \
+    -v "$VOUT_REAL:/out" \
+    "$IMAGE" "${VARGS[@]}" 2>&1 | sed "s#/out/#$VOUT_REAL/#g"
+  exit "${PIPESTATUS[0]}"
 fi
 
 DIFF=()
