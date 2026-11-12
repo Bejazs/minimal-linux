@@ -14,7 +14,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install analyzer deps
-        run: pip install jsbeautifier==1.15.1 yara-python==4.5.4
+        run: pip install jsbeautifier==1.15.1 yara-python==4.5.4 tree-sitter==0.26.1 tree-sitter-javascript==0.25.0
       - name: Unit tests (synthetic samples)
         run: PYTHONPATH=static python -m unittest discover -s tests -v
       - name: shellcheck

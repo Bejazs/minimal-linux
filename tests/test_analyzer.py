@@ -12,7 +12,7 @@ import tempfile
 import unittest
 import zipfile
 
-from extanalyzer import cli, lists, unpack
+from extanalyzer import cli, jsast, lists, unpack
 from extanalyzer.common import defang
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -71,7 +71,8 @@ class AnalyzerTests(unittest.TestCase):
 
     def test_suspicious_findings_have_location_snippet_confidence(self):
         out_dir, rep = self.run_one(os.path.join(SAMPLES, "suspicious-helper-1.1"))
-        self.assertEqual(rep["verdict"]["label"], "likely_malicious")
+        self.assertEqual(rep["verdict"]["label"], "malicious" if jsast.available() else "likely_malicious")
+        self.assertEqual(rep["score_v0.1"]["label"], "likely_malicious")
         ids = {f["id"].rsplit("-", 1)[0]: f for f in rep["findings"]}
         ev = ids["CODE-EVAL"]
         self.assertEqual((ev["severity"], ev["confidence"]), ("high", "high"))
@@ -181,6 +182,56 @@ class AnalyzerTests(unittest.TestCase):
     def test_missing_lists_is_a_warning(self):
         _, rep = self.run_one(os.path.join(SAMPLES, "benign-notes"))
         self.assertTrue(any("--update-lists" in w for w in rep["warnings"]))
+
+
+CASES = os.path.join(HERE, "cases")
+SEV_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+
+
+@unittest.skipUnless(jsast.available(), "tree-sitter not installed")
+class BehaviorTests(unittest.TestCase):
+    """Synthetic positive/negative cases per combination rule (tests/cases/*/expected.json)."""
+
+    def setUp(self):
+        self.out = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.out)
+
+    def test_cases(self):
+        names = sorted(d for d in os.listdir(CASES) if os.path.isdir(os.path.join(CASES, d)))
+        self.assertTrue(names)
+        for name in names:
+            with self.subTest(case=name):
+                with open(os.path.join(CASES, name, "expected.json")) as f:
+                    exp = json.load(f)
+                out_dir, rep = cli.analyze_one(os.path.join(CASES, name), self.out)
+                rules = {}
+                for f in rep["findings"]:
+                    rules.setdefault(f["id"].rsplit("-", 1)[0], []).append(f)
+                for r in exp.get("present", []):
+                    self.assertIn(r, rules, f"{name}: expected {r}")
+                for r in exp.get("absent", []):
+                    self.assertNotIn(r, rules, f"{name}: unexpected {r}")
+                for r in exp.get("unreachable", []):
+                    self.assertTrue(all(f["reachability"] == "unreachable" for f in rules[r]), name)
+                if "label" in exp:
+                    self.assertEqual(rep["verdict"]["label"], exp["label"], name)
+                if "not_label" in exp:
+                    self.assertNotEqual(rep["verdict"]["label"], exp["not_label"], name)
+                if "min_severity" in exp:
+                    top = max(SEV_RANK[f["severity"]] for r in exp["present"] for f in rules[r])
+                    self.assertGreaterEqual(top, SEV_RANK[exp["min_severity"]], name)
+                self.assertTrue(os.path.isfile(os.path.join(out_dir, "behaviors.json")))
+                self.assertIn("score_v0.1", rep)
+
+    def test_reachability_in_sample(self):
+        _, rep = cli.analyze_one(os.path.join(SAMPLES, "suspicious-helper-1.1"), self.out)
+        by = {(f["id"].rsplit("-", 1)[0], (f.get("location") or {}).get("path")): f for f in rep["findings"]}
+        self.assertEqual(by[("DATA-COOKIES", "bg.js")]["reachability"], "unreachable")   # collect() is never called
+        self.assertEqual(by[("CODE-EVAL", "bg.js")]["reachability"], "reachable")        # refresh() runs on an alarm
+        self.assertEqual(by[("CODE-OBF", "js/lib.min.js")]["reachability"], "unreachable")
+        self.assertIn("js/lib.min.js", rep["reachability"]["files_unreachable"])
 
 
 if __name__ == "__main__":

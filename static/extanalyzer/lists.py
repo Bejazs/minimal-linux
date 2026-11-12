@@ -68,6 +68,15 @@ def _naive_registrable(host):
     return ".".join(host.lower().split(".")[-2:])
 
 
+def registrable_func(lists_dir):
+    """Registrable-domain function: PSL if the list is present, else last two labels."""
+    try:
+        with open(os.path.join(lists_dir or "", PSL_FILE), encoding="utf-8", errors="replace") as f:
+            return PSL(f.read()).registrable
+    except OSError:
+        return _naive_registrable
+
+
 def enrich(domains, lists_dir):
     """Annotate domain IOC dicts in place. Returns (info, warnings)."""
     info = {"dir": lists_dir, "loaded": [], "meta": {}}

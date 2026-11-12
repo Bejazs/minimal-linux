@@ -13,17 +13,24 @@ try:
 except ImportError:  # pragma: no cover
     yara = None
 
-SEV_ORDER = {"high": 0, "medium": 1, "low": 2, "info": 3}
+SEV_ORDER = {"critical": -1, "high": 0, "medium": 1, "low": 2, "info": 3}
 CONF_ORDER = {"high": 0, "medium": 1, "low": 2}
 
 
 def sort_findings(findings):
-    return sorted(findings, key=lambda f: (SEV_ORDER[f["severity"]], CONF_ORDER[f["confidence"]], f["id"]))
+    return sorted(findings, key=lambda f: (f.get("reachability") == "unreachable", SEV_ORDER[f["severity"]],
+                                           CONF_ORDER[f["confidence"]], f["id"]))
 
 
 def write_json(report, out_dir):
     with open(os.path.join(out_dir, "report.json"), "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
+
+
+def write_behaviors(behaviors, out_dir):
+    with open(os.path.join(out_dir, "behaviors.json"), "w", encoding="utf-8") as f:
+        json.dump(behaviors, f, indent=2, ensure_ascii=False)
+    return "behaviors.json"
 
 
 def write_iocs_csv(iocs, out_dir):
@@ -140,15 +147,32 @@ def write_markdown(report, out_dir):
     if s.get("extension_id"):
         md.append(f"- Extension ID: `{s['extension_id']}`")
     md.append(f"- Manifest V{s.get('manifest_version')}")
+    old = report.get("score_v0.1")
+    if old:
+        md.append(f"- Score v0.1 (previous method, all code, no combination rules): {old['label']} ({old['score']}/100)")
     if v["attack"]:
         md.append("- ATT&CK: " + ", ".join(f"{t['id']} {t['name']}".strip() for t in v["attack"]))
     md.append("")
+    ra = report.get("reachability")
+    if ra:
+        md.append("## Reachability")
+        md.append("Entry points: " + (", ".join(f"`{e['path']}` ({e['reason']})" for e in ra["entry_points"]) or "none"))
+        if ra["files_unreachable"]:
+            md.append("Code files no entry point loads: " + ", ".join(f"`{x}`" for x in ra["files_unreachable"]))
+        if ra["files_unparsed"]:
+            md.append("Not parsed (findings count as reachable): " + ", ".join(f"`{x}`" for x in ra["files_unparsed"]))
+        md.append(f"Functions reachable: {ra['functions']['reachable']}/{ra['functions']['total']}. "
+                  "Unreachable findings are listed at the end and do not count for the score.")
+        md.append("")
+    live = [f for f in report["findings"] if f.get("reachability") != "unreachable"]
+    dead = [f for f in report["findings"] if f.get("reachability") == "unreachable"]
     counts = {}
-    for f in report["findings"]:
+    for f in live:
         counts[f["severity"]] = counts.get(f["severity"], 0) + 1
-    md.append("Findings: " + ", ".join(f"{counts.get(k, 0)} {k}" for k in ("high", "medium", "low")))
+    md.append("Findings (reachable or unknown): " +
+              ", ".join(f"{counts.get(k, 0)} {k}" for k in ("critical", "high", "medium", "low")))
     md.append("")
-    for f in report["findings"]:
+    for f in live:
         if f["severity"] == "info":
             continue
         md.append(f"## {f['id']} · {f['title']}")
@@ -171,8 +195,20 @@ def write_markdown(report, out_dir):
             md.append(f["snippet"])
             md.append("```")
         md.append(f"Why: {f['confidence_reason']}")
+        if f.get("reachability"):
+            md.append(f"Reachability: {f['reachability']}" + (f" (in `{f['function']}`)" if f.get("function") else ""))
         if f.get("attack"):
             md.append("ATT&CK: " + ", ".join(f["attack"]))
+        if f.get("attack_gap"):
+            md.append(f"ATT&CK gap: {f['attack_gap']}")
+        md.append("")
+    if dead:
+        md.append("## Not reachable from any entry point (not scored)")
+        for f in dead:
+            loc = f.get("location") or {}
+            where = f"{loc.get('path')}" + (f":{loc['line_start']}" if loc.get("line_start") else "")
+            md.append(f"- {f['id']} · {f['title']} ({f['severity']}/{f['confidence']}) at {where}"
+                      + (f" in `{f['function']}`" if f.get("function") else ""))
         md.append("")
     i = report["iocs"]
     md.append("## IOCs")
@@ -199,7 +235,7 @@ def write_markdown(report, out_dir):
     md.append("")
     art = report.get("artifacts", {})
     md.append("## Artifacts")
-    md.append("- report.json, iocs.csv")
+    md.append("- report.json, behaviors.json, iocs.csv")
     if art.get("yara"):
         y = art["yara"]
         md.append(f"- {y['path']} ({y['strings']} strings; validated against sample: {y['validated']})")

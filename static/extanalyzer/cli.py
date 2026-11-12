@@ -14,8 +14,8 @@ import shutil
 import subprocess
 import sys
 
-from . import __version__, code_scan, emit, iocs, lists, manifest, score
-from .common import finding
+from . import __version__, code_scan, combine, emit, flows, iocs, lists, manifest, reach, score
+from .common import finding, snippet
 from .unpack import UnpackError, inventory, unpack
 
 
@@ -71,8 +71,10 @@ def analyze_one(sample, out_root, lists_dir=None):
                 f"list date {lists_info['meta'].get('urlhaus', 'unknown')}",
                 path=path or None, line_start=int(ln) if ln.isdigit() else None,
                 attack=["T1071.001"], category="ioc", match=d["value"]))
-    findings = emit.sort_findings(findings)
-    verdict = score.score(findings)
+    behaviors, b_findings = analyze_behaviors(unpacked, file_info, findings, lists_dir)
+    v01 = score.score(findings)                # v0.1: previous detectors only, all code
+    findings = emit.sort_findings(findings + b_findings)
+    verdict = score.score_v0_2(findings)
 
     name = (m_meta or {}).get("name") or meta["input"]
     if isinstance(name, str) and name.startswith("__MSG_"):
@@ -95,6 +97,8 @@ def analyze_one(sample, out_root, lists_dir=None):
             "extension_id": ext_id, "file_count": len(files),
         },
         "verdict": verdict,
+        "score_v0.1": v01,
+        "score_v0.2": verdict,
         "manifest": m_meta,
         "findings": findings,
         "iocs": found_iocs,
@@ -107,9 +111,70 @@ def analyze_one(sample, out_root, lists_dir=None):
     report["artifacts"]["yara"] = emit.write_yara(report, out_dir, unpacked)
     report["artifacts"]["sigma"] = emit.write_sigma(report, out_dir)
     emit.write_iocs_csv(found_iocs, out_dir)
+    behaviors["sample"] = {"name": name, "version": report["sample"]["version"], "sha256": sha}
+    report["artifacts"]["behaviors"] = emit.write_behaviors(behaviors, out_dir)
+    report["reachability"] = {k: behaviors["reachability"][k] for k in
+                              ("parser", "entry_points", "files_reachable", "files_unreachable", "files_unparsed",
+                               "functions")} if behaviors.get("reachability") else None
     emit.write_json(report, out_dir)
     emit.write_markdown(report, out_dir)
     return out_dir, report
+
+
+def _primary_domains(root, registrable):
+    m = reach._load_manifest(root)
+    hosts = []
+    if isinstance(m.get("homepage_url"), str):
+        hosts.append(m["homepage_url"])
+    pats = list(m.get("host_permissions") or [])
+    if m.get("manifest_version") == 2:
+        pats += [p for p in m.get("permissions") or [] if isinstance(p, str) and "://" in p]
+    pats += list((m.get("externally_connectable") or {}).get("matches") or [])
+    for p in pats:
+        if isinstance(p, str) and "://" in p:
+            hosts.append(p)
+    out = set()
+    for h in hosts:
+        host = h.split("://", 1)[1].split("/", 1)[0].split(":", 1)[0].lower()
+        host = host[2:] if host.startswith("*.") else host
+        if host and "*" not in host and "." in host:
+            out.add(registrable(host))
+    return out
+
+
+def analyze_behaviors(unpacked, file_info, findings, lists_dir):
+    """Reachability for every finding, data flows and combination rules (score v0.2)."""
+    pkg = reach.analyze(unpacked, file_info)
+    if pkg is None:
+        for f in findings:
+            f["reachability"] = "unknown"
+        return {"reachability": None, "flows": [], "combinations": [],
+                "note": "tree-sitter not available: no reachability or flow analysis"}, []
+    for f in findings:
+        loc = f.get("location") or {}
+        f["reachability"] = pkg.status(loc.get("path"), loc.get("line_start"))
+        fn = pkg.function_label(loc.get("path"), loc.get("line_start"))
+        if fn:
+            f["function"] = fn
+    registrable = lists.registrable_func(lists_dir)
+    primary = _primary_domains(unpacked, registrable)
+    fl = flows.analyze(pkg, primary, registrable)
+    b_findings, matches = combine.evaluate(fl)
+    for f in b_findings:
+        text = pkg.text_used.get(f["location"]["path"], "")
+        if text:
+            f["snippet"] = snippet(text.splitlines() or [""], f["location"]["line_start"])
+            beaut = next((fi.get("beautified_path") for fi in file_info if fi["path"] == f["location"]["path"]), None)
+            if beaut:
+                f["location"]["lines_refer_to"] = beaut
+    return {
+        "reachability": pkg.summary(),
+        "primary_domains": sorted(primary),
+        "flows": [x.to_dict() for x in fl],
+        "combinations": matches,
+        "rules": {k: {kk: v[kk] for kk in ("title", "severity", "attack", "attack_gap", "why")}
+                  for k, v in combine.RULES.items()},
+    }, b_findings
 
 
 def diff_reports(old, new, out_root):
