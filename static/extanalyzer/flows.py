@@ -15,7 +15,10 @@ Source kinds
 Sink kinds
   network-send  fetch body/URL, XMLHttpRequest.send, sendBeacon, WebSocket.send, img/script src
   code-exec     eval, Function, string timers, executeScript code/files, importScripts, script src
-  privileged    chrome.tabs.create/update, chrome.windows.create, scripting, location changes
+  privileged    chrome.tabs.create/update, chrome.windows.create, scripting, location changes,
+                request URL taken from data (fetch, XMLHttpRequest.open)
+  dispatch      network data selects a branch (switch) that performs privileged actions, or
+                picks a handler by computed name (obj[cmd]())
 """
 
 import re
@@ -34,6 +37,11 @@ SERIALIZE = {"JSON.stringify", "btoa", "encodeURIComponent", "encodeURI", "escap
 PRIV_RE = re.compile(r"^(?:chrome|browser)\.(?:tabs\.(?:create|update|executeScript)|windows\.(?:create|update)|"
                      r"scripting\.\w+|webNavigation\.\w+)$")
 EXEC_CALLS = {"eval", "Function", "importScripts", "execScript"}
+HTTP_METHODS = {"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}
+# text of a code block that performs privileged browser actions (used for dispatch and handlers)
+PRIV_TEXT_RE = re.compile(r"\b(?:chrome|browser)\.(?:tabs|windows|scripting|cookies|webRequest|declarativeNetRequest|"
+                          r"downloads|history|management|proxy)\.|\bfetch\s*\(|\bXMLHttpRequest\b|"
+                          r"\blocation(?:\.href)?\s*=[^=]|\beval\s*\(|\bFunction\s*\(")
 
 
 def _t(node, src):
@@ -159,6 +167,8 @@ class Analyzer:
         self.timer_names, self.timer_nodes = set(), set()
         self.envs = {}           # function start_byte -> Env (kept across passes)
         self.param_taint = {}    # function start_byte -> [kinds per parameter]
+        self.cred_objs = set()   # identifiers with `.withCredentials = true` (XHR)
+        self.ws_names = set()    # identifiers bound to `new WebSocket(...)`
 
     def line(self, node):
         return node.start_point[0] + 1 + self.u.line_offset
@@ -276,6 +286,8 @@ class Analyzer:
                     taint.declared.update(_t(i, self.src) for i in _idents(nm))
                 name = n.child_by_field_name("name")
                 val = n.child_by_field_name("value")
+                if name is not None and val is not None and name.type == "identifier" and _is_websocket(val, self.src):
+                    self.ws_names.add(_t(name, self.src))
                 if name is not None and val is not None:
                     ks = self.kinds(val, taint, transforms)
                     if name.type == "identifier":
@@ -287,6 +299,7 @@ class Analyzer:
                 left, right = n.child_by_field_name("left"), n.child_by_field_name("right")
                 ks = self.kinds(right, taint, transforms)
                 if left is not None:
+                    grew |= self.assign_special(left, right)
                     if left.type == "identifier":
                         grew |= self.bind(_t(left, self.src), ks, taint)
                     elif left.type == "member_expression":
@@ -298,8 +311,44 @@ class Analyzer:
                         self.sink_assign(n, left, right, taint, transforms)
             elif t in ("call_expression", "new_expression"):
                 grew |= self.call(n, taint, transforms, depth)
+            elif t == "switch_statement":
+                self.dispatch_switch(n, taint)
             stack.extend((c, taint) for c in reversed(n.named_children))
         return grew
+
+    def assign_special(self, left, right):
+        """`x = new WebSocket(..)`, `ws.onmessage = fn`, `xhr.withCredentials = true`."""
+        if right is None:
+            return False
+        if left.type == "identifier" and _is_websocket(right, self.src):
+            self.ws_names.add(_t(left, self.src))
+            return False
+        if left.type != "member_expression":
+            return False
+        obj, prop = left.child_by_field_name("object"), left.child_by_field_name("property")
+        pname = _t(prop, self.src) if prop is not None else ""
+        oname = _t(obj, self.src) if obj is not None else ""
+        if pname == "withCredentials" and _t(right, self.src) == "true":
+            self.cred_objs.add(oname)
+        if pname == "onmessage" and _is_func(right):
+            kind = "network" if oname in self.ws_names else "message"
+            cur = self.param_taint.setdefault(right.start_byte, [])
+            if not cur:
+                cur.append(set())
+            if kind not in cur[0]:
+                cur[0].add(kind)
+                return True
+        return False
+
+    def dispatch_switch(self, n, taint):
+        """Remote data selecting which privileged branch runs (command channel shape)."""
+        val = n.child_by_field_name("value")
+        body = n.child_by_field_name("body")
+        if val is None or body is None:
+            return
+        ks = self.kinds(val, taint) & {"network", "auth-response"}
+        if ks and PRIV_TEXT_RE.search(_t(body, self.src)):
+            self.add(ks, "dispatch", "switch" + _t(val, self.src)[:80], n, None, set())
 
     def call(self, n, taint, transforms, depth):
         grew = False
@@ -323,7 +372,9 @@ class Analyzer:
             if ev in KEY_EVENTS:
                 cb_kinds.add("input")
             elif ev == "message":
-                cb_kinds.add("message" if "WebSocket" not in name else "network")
+                obj = f.child_by_field_name("object") if f is not None and f.type == "member_expression" else None
+                is_ws = "WebSocket" in name or (obj is not None and _t(obj, self.src) in self.ws_names)
+                cb_kinds.add("network" if is_ws else "message")
         if name.endswith(("onAlarm.addListener",)) or name in ("setInterval", "setTimeout"):
             for a in args[:1]:
                 if _is_func(a):
@@ -354,6 +405,11 @@ class Analyzer:
                         for _ in range(3):
                             if not self.run(body, sub, transforms, depth + 1):
                                 break
+        if f is not None and f.type == "subscript_expression":
+            idx = f.child_by_field_name("index")
+            ks = self.kinds(idx, taint) & {"network", "auth-response"}
+            if ks:
+                self.add(ks, "dispatch", _t(f, self.src)[:80] + "()", n, None, set())
         self.sink_call(n, name, args, taint, transforms)
         return grew
 
@@ -367,11 +423,13 @@ class Analyzer:
             old = self.flows[k]
             old.sources = sorted(set(old.sources) | set(sources))
             old.transforms = sorted(set(old.transforms) | set(transforms))
+            old.credentialed = old.credentialed or credentialed
         else:
             self.flows[k] = fl
 
     def sink_call(self, n, name, args, taint, transforms):
         tr = set()
+        f = n.child_by_field_name("function")
         if NETWORK_CALL_RE.match(name) and args:
             url_ks = self.kinds(args[0], taint, tr)
             body_ks = set()
@@ -385,6 +443,14 @@ class Analyzer:
                      "network-send", name, n, dest, tr | transforms, cred)
             if url_ks & EXTERNAL:
                 self.add(url_ks, "privileged", name + " (url from data)", n, dest, tr | transforms, cred)
+        elif name.endswith(".open") and len(args) >= 2 and f is not None and f.type == "member_expression" \
+                and args[0].type in ("string", "template_string") \
+                and _t(args[0], self.src).strip("'\"`").upper() in HTTP_METHODS:
+            obj = _t(f.child_by_field_name("object"), self.src)
+            url_ks = self.kinds(args[1], taint, tr)
+            if url_ks & EXTERNAL:
+                self.add(url_ks, "privileged", "XMLHttpRequest.open (url from data)", n,
+                         self.classify(self.url_of(args[1])), tr | transforms, obj in self.cred_objs)
         elif name.endswith(".sendBeacon") and args:
             ks = set().union(*(self.kinds(a, taint, tr) for a in args[1:])) if len(args) > 1 else set()
             self.add(ks, "network-send", "navigator.sendBeacon", n, self.classify(self.url_of(args[0])), tr | transforms)
@@ -425,6 +491,15 @@ class Analyzer:
             self.add(ks, "code-exec", ltxt, n, None, tr | transforms)
         elif ltxt in ("location.href", "window.location", "location", "window.location.href", "document.location"):
             self.add(ks & (EXTERNAL | {"auth-response"}), "privileged", ltxt, n, None, tr | transforms)
+
+
+def _is_websocket(node, src):
+    if node is not None and node.type == "await_expression":
+        node = node.named_children[0] if node.named_children else None
+    if node is None or node.type != "new_expression":
+        return False
+    c = node.child_by_field_name("constructor")
+    return c is not None and _t(c, src) in ("WebSocket", "window.WebSocket", "self.WebSocket")
 
 
 def _idents(node):

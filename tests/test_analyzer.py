@@ -185,7 +185,7 @@ class AnalyzerTests(unittest.TestCase):
 
 
 CASES = os.path.join(HERE, "cases")
-SEV_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+SEV_RANK = {"info": -1, "low": 0, "medium": 1, "high": 2, "critical": 3}
 
 
 @unittest.skipUnless(jsast.available(), "tree-sitter not installed")
@@ -222,6 +222,9 @@ class BehaviorTests(unittest.TestCase):
                 if "min_severity" in exp:
                     top = max(SEV_RANK[f["severity"]] for r in exp["present"] for f in rules[r])
                     self.assertGreaterEqual(top, SEV_RANK[exp["min_severity"]], name)
+                for r, sev in exp.get("max_severity", {}).items():
+                    for f in rules.get(r, []):
+                        self.assertLessEqual(SEV_RANK[f["severity"]], SEV_RANK[sev], f"{name}: {f['id']} {f['severity']}")
                 self.assertTrue(os.path.isfile(os.path.join(out_dir, "behaviors.json")))
                 self.assertIn("score_v0.1", rep)
 
