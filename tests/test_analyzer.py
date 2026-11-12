@@ -12,7 +12,7 @@ import tempfile
 import unittest
 import zipfile
 
-from extanalyzer import cli, jsast, lists, unpack
+from extanalyzer import cli, jsast, lists, unpack, validate
 from extanalyzer.common import defang
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -206,27 +206,37 @@ class BehaviorTests(unittest.TestCase):
                 with open(os.path.join(CASES, name, "expected.json")) as f:
                     exp = json.load(f)
                 out_dir, rep = cli.analyze_one(os.path.join(CASES, name), self.out)
-                rules = {}
-                for f in rep["findings"]:
-                    rules.setdefault(f["id"].rsplit("-", 1)[0], []).append(f)
-                for r in exp.get("present", []):
-                    self.assertIn(r, rules, f"{name}: expected {r}")
-                for r in exp.get("absent", []):
-                    self.assertNotIn(r, rules, f"{name}: unexpected {r}")
-                for r in exp.get("unreachable", []):
-                    self.assertTrue(all(f["reachability"] == "unreachable" for f in rules[r]), name)
-                if "label" in exp:
-                    self.assertEqual(rep["verdict"]["label"], exp["label"], name)
-                if "not_label" in exp:
-                    self.assertNotEqual(rep["verdict"]["label"], exp["not_label"], name)
-                if "min_severity" in exp:
-                    top = max(SEV_RANK[f["severity"]] for r in exp["present"] for f in rules[r])
-                    self.assertGreaterEqual(top, SEV_RANK[exp["min_severity"]], name)
-                for r, sev in exp.get("max_severity", {}).items():
-                    for f in rules.get(r, []):
-                        self.assertLessEqual(SEV_RANK[f["severity"]], SEV_RANK[sev], f"{name}: {f['id']} {f['severity']}")
+                self.assertEqual(validate.check_case(exp, rep), [], name)
                 self.assertTrue(os.path.isfile(os.path.join(out_dir, "behaviors.json")))
                 self.assertIn("score_v0.1", rep)
+
+    def test_validate_corpus(self):
+        corpus = os.path.join(self.out, "corpus")
+        for kind, cat, case in (("malicious", "cookie-exfil", "session-exfil-pos"),
+                                ("malicious", "command-channel", "c2-pos"),
+                                ("malicious", "command-channel", "c2-neg"),       # a miss, on purpose
+                                ("benign", "productivity", "session-exfil-neg"),
+                                ("benign", "dev", "remote-code-neg")):
+            shutil.copytree(os.path.join(CASES, case), os.path.join(corpus, kind, cat, case))
+        vdir, doc = validate.run(corpus, os.path.join(self.out, "v1"), cli.analyze_one)
+        m = doc["metrics"]
+        self.assertEqual(m["malicious"]["cookie-exfil"]["detection_rate"], 1.0)
+        self.assertEqual(m["malicious"]["command-channel"]["detection_rate"], 0.5)
+        self.assertEqual(m["benign"]["productivity"]["false_positive_rate"], 0.0)
+        with open(os.path.join(vdir, "report.md")) as f:
+            md = f.read()
+        self.assertIn("command-channel/c2-neg", md)                 # listed as not detected
+        self.assertNotIn("```", md)                                  # no snippets
+        with open(os.path.join(vdir, "results.json")) as f:
+            self.assertNotIn("snippet", f.read())
+        # baseline: same results, one label edited -> one change reported
+        base = json.loads(json.dumps(doc))
+        next(r for r in base["samples"] if r["label"] == "malicious")["label"] = "low_risk"
+        bpath = os.path.join(self.out, "base.json")
+        with open(bpath, "w") as f:
+            json.dump(base, f)
+        _, doc2 = validate.run(corpus, os.path.join(self.out, "v2"), cli.analyze_one, baseline=bpath)
+        self.assertEqual(len(doc2["baseline"]["changed"]), 1)
 
     def test_reachability_in_sample(self):
         _, rep = cli.analyze_one(os.path.join(SAMPLES, "suspicious-helper-1.1"), self.out)

@@ -75,6 +75,14 @@ intel-add --check
 
 Built-in lists are in `static/intel/` (ignore lists, libraries, disclosure synonyms; the indicator lists start empty). Your own entries go to `~/analysis/intel/`, which is mounted read-only over the built-in lists. Each entry needs a source and a confidence, and expired entries are ignored with a warning. Only IOCs that reachable code references, with high-confidence intel, change the verdict. IOCs that only appear as data (JSON lists, dead code, documentation links) are listed per file and do not go into YARA/Sigma.
 
+### Validation
+
+```bash
+ext-analyze --validate ~/corpus [--baseline old/results.json]   # corpus/{benign,malicious}/<category>/<sample>
+```
+
+Gives detection and false-positive rates per category, the critical/high findings in benign samples, and changes against a baseline. It writes no sample code, so `validation/report.md` can be shared. Results on the synthetic cases and on benign bundles are in [docs/validation.md](docs/validation.md).
+
 ### Verdict (v0.2)
 
 The verdict comes from **combination rules** on data flows in reachable code, then from the score:

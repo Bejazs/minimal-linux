@@ -2,6 +2,8 @@
 
   python3 -m extanalyzer SAMPLE [SAMPLE ...] --out /out
   python3 -m extanalyzer --diff OLD NEW --out /out
+  python3 -m extanalyzer --validate CORPUS [--baseline results.json] --out /out
+  python3 -m extanalyzer --validate-cases tests/cases --out /out
 """
 
 import argparse
@@ -15,7 +17,7 @@ import subprocess
 import sys
 
 from . import (__version__, code_scan, combine, detectors, disclosure, emit, flows, intel, iocs, libs, lists, locmap,
-               manifest, pkgcontent, reach, refs, score, vendor)
+               manifest, pkgcontent, reach, refs, score, validate, vendor)
 from .common import finding, snippet
 from .unpack import UnpackError, inventory, unpack
 
@@ -309,7 +311,21 @@ def main(argv=None):
     ap.add_argument("--out", default="/out", help="output root (default /out)")
     ap.add_argument("--lists", default=None, help="folder with Tranco/PSL/URLhaus lists (optional)")
     ap.add_argument("--intel", default=None, help="local intel folder laid over the built-in intel/ (optional)")
+    ap.add_argument("--validate", metavar="CORPUS", help="corpus/{benign,malicious}/<category>/<sample>: metrics")
+    ap.add_argument("--baseline", metavar="RESULTS", help="results.json of an earlier --validate run to compare with")
+    ap.add_argument("--validate-cases", metavar="DIR", help="check synthetic cases (DIR/*/expected.json)")
     args = ap.parse_args(argv)
+    if args.validate or args.validate_cases:
+        os.makedirs(args.out, exist_ok=True)
+        if args.validate_cases:
+            vdir, doc = validate.run_cases(args.validate_cases, args.out, analyze_one)
+            print(f"cases: {doc['passed']}/{doc['total']} pass -> {vdir}/cases.md")
+            if doc["passed"] != doc["total"]:
+                return 1
+        if args.validate:
+            vdir, doc = validate.run(args.validate, args.out, analyze_one, args.lists, args.intel, args.baseline)
+            print(f"validation: {len(doc['samples'])} samples -> {vdir}/report.md")
+        return 0
     if not args.samples and not args.diff:
         ap.error("give at least one sample, or --diff OLD NEW")
     os.makedirs(args.out, exist_ok=True)
