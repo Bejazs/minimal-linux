@@ -186,6 +186,7 @@ install_static() {
   sudo mkdir -p /opt/minimal-linux
   sudo cp -r "${REPO_DIR}/static" "${REPO_DIR}/bin" /opt/minimal-linux/
   sudo ln -sf /opt/minimal-linux/bin/ext-analyze /usr/local/bin/ext-analyze
+  sudo ln -sf /opt/minimal-linux/bin/intel-add /usr/local/bin/intel-add
   echo "Building the ext-static analysis image (needs Docker Hub, Debian and PyPI access)..."
   if ! sudo docker build -t ext-static:latest /opt/minimal-linux/static; then
     echo "Error: building ext-static failed. Re-run later with: sudo docker build -t ext-static:latest /opt/minimal-linux/static"

@@ -45,8 +45,8 @@ Output per sample in `~/analysis/out/<name>-<sha256[:12]>/`:
 | `report.json` | Machine-readable: sample metadata and hashes, extension ID (from CRX3 header or manifest key), verdict (`score_v0.2`; `score_v0.1` kept beside it for comparison), ATT&CK techniques, findings (each with `reachability`), reachability summary, IOCs, file inventory |
 | `behaviors.json` | Entry points, reachable/unreachable files and functions, source → sink data flows, the combination rules that fired and the detector matches (B1–B9) |
 | `report.md` | Human summary. Every finding has severity, **confidence (high/medium/low) with the reason**, `path:line`, reachability, and a code snippet (2 lines of context, URLs defanged). Findings in code no entry point reaches are listed separately and not scored |
-| `iocs.csv` | Domains, URLs, IPs, other extension IDs, with first location, Tranco rank and URLhaus hits |
-| `rule.yar` | YARA rule from sample-specific domains/URLs, validated against the sample |
+| `iocs.csv` | Domains, URLs, IPs, other extension IDs, with first location, Tranco rank, URLhaus hits and `reference` (`code-referenced` or `data-only`) |
+| `rule.yar` | YARA rule from sample-specific, code-referenced domains/URLs, validated against the sample |
 | `sigma/proxy.yml`, `sigma/dns.yml` | Sigma rules for the network IOCs (common domains like googleapis/discord excluded) |
 | `unpacked/` | Extracted files; `unpacked/_deob/` has beautified copies of minified/obfuscated JS and `.wat` for WASM |
 
@@ -66,6 +66,15 @@ Downloads public lists to `~/.cache/ext-analyze/lists/`, which is mounted read-o
 
 URLhaus downloads need a free abuse.ch Auth-Key: save it in `~/.config/ext-analyze/urlhaus.key` (`chmod 600`). The key goes in the download URL, as abuse.ch requires, and is not printed. Without it URLhaus is skipped. The report lists which lists were used and their dates. Without any lists the analysis still runs, with a warning. Setup runs `--update-lists` once (Tranco + PSL).
 
+### Intel
+
+```bash
+intel-add domain bad.example --source "where it comes from, reviewed by whom" --confidence high [--expires 2027-01-01]
+intel-add --check
+```
+
+Built-in lists are in `static/intel/` (ignore lists, libraries, disclosure synonyms; the indicator lists start empty). Your own entries go to `~/analysis/intel/`, which is mounted read-only over the built-in lists. Each entry needs a source and a confidence, and expired entries are ignored with a warning. Only IOCs that reachable code references, with high-confidence intel, change the verdict. IOCs that only appear as data (JSON lists, dead code, documentation links) are listed per file and do not go into YARA/Sigma.
+
 ### Verdict (v0.2)
 
 The verdict comes from **combination rules** on data flows in reachable code, then from the score:
@@ -75,6 +84,8 @@ The verdict comes from **combination rules** on data flows in reachable code, th
 - `suspicious`: score ≥ 30; `low_risk`: below.
 
 Nine **detectors** add findings (`DET-*`, `category: detector`): session data sent to non-primary hosts, credentialed requests to URLs from data, command dispatch on network data, weak origin checks in message handlers, hidden windows (with idle gating), identity-header rewriting (code and static rulesets), URLs/API names hidden with `fromCharCode`/arrays/`atob`/split strings (folded statically, never run), code injection, and dialogs combined with forced window focus.
+
+The report also marks known libraries, which lose one confidence step and get no obfuscation finding. It flags executables and server scripts inside the package, lists brand domains (more than one is flagged for review), and compares the data sent with what the extension's texts disclose (privacy, not scored). Each finding gives the original minified position as `file:line:column` next to the beautified line.
 
 Reachability starts from the manifest's entry points (background, content scripts, extension pages, `web_accessible_resources`). Findings in code nothing reaches are kept in the report but do not count. Every rule, its closest legitimate pattern and its limits are in [docs/rules.md](docs/rules.md). The previous method stays in `report.json` as `score_v0.1`.
 

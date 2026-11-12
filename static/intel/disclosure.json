@@ -1,0 +1,127 @@
+{
+ "_doc": "Data categories for the disclosure check (F). `keys`: regexes on field names in sent payloads; `sources`: flow source kinds that imply the category; `disclosure`: words that count as disclosing it in _locales messages or HTML text (case-insensitive, any language listed).",
+ "categories": {
+  "cookies or session": {
+   "keys": [
+    "cookie",
+    "session",
+    "token",
+    "auth"
+   ],
+   "sources": [
+    "session"
+   ],
+   "disclosure": [
+    "cookie",
+    "session",
+    "token",
+    "cookies",
+    "sessão",
+    "sesión"
+   ]
+  },
+  "typed text": {
+   "keys": [
+    "key(?:s|stroke|log)",
+    "typed",
+    "input"
+   ],
+   "sources": [
+    "input"
+   ],
+   "disclosure": [
+    "keystroke",
+    "typed",
+    "keyboard",
+    "input",
+    "teclas",
+    "teclado",
+    "texto introduzido"
+   ]
+  },
+  "browsing history or URLs": {
+   "keys": [
+    "histor",
+    "\\burls?\\b",
+    "visited",
+    "tabs?\\b",
+    "href",
+    "referr?er"
+   ],
+   "sources": [],
+   "disclosure": [
+    "browsing history",
+    "history",
+    "urls",
+    "websites you visit",
+    "web pages",
+    "histórico",
+    "historial",
+    "páginas visitadas",
+    "sites visitados"
+   ]
+  },
+  "email address": {
+   "keys": [
+    "e-?mail"
+   ],
+   "sources": [],
+   "disclosure": [
+    "email",
+    "e-mail",
+    "correo",
+    "endereço de email"
+   ]
+  },
+  "location": {
+   "keys": [
+    "geo",
+    "\\blat(?:itude)?\\b",
+    "\\blon(?:g|gitude)?\\b",
+    "location"
+   ],
+   "sources": [],
+   "disclosure": [
+    "location",
+    "geolocation",
+    "localização",
+    "ubicación"
+   ]
+  },
+  "device identifiers": {
+   "keys": [
+    "device_?id",
+    "fingerprint",
+    "\\buuid\\b",
+    "machine_?id",
+    "user_?agent"
+   ],
+   "sources": [],
+   "disclosure": [
+    "device",
+    "identifier",
+    "fingerprint",
+    "dispositivo",
+    "identificador"
+   ]
+  },
+  "personal data": {
+   "keys": [
+    "\\bname\\b",
+    "phone",
+    "address",
+    "birth"
+   ],
+   "sources": [],
+   "disclosure": [
+    "personal",
+    "name",
+    "phone",
+    "dados pessoais",
+    "datos personales",
+    "nome",
+    "telefone"
+   ]
+  }
+ }
+}

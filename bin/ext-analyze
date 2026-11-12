@@ -8,15 +8,17 @@
 #                                 URLhaus if an abuse.ch key is in ~/.config/ext-analyze/urlhaus.key)
 #
 # Env: EXT_ANALYZE_OUT (default ~/analysis/out), EXT_ANALYZE_IMAGE (default ext-static:latest),
-#      EXT_ANALYZE_LISTS (default ~/.cache/ext-analyze/lists)
+#      EXT_ANALYZE_LISTS (default ~/.cache/ext-analyze/lists), EXT_ANALYZE_INTEL (default ~/analysis/intel,
+#      local intel laid over the built-in one; add entries with intel-add)
 set -euo pipefail
 
 OUT="${EXT_ANALYZE_OUT:-$HOME/analysis/out}"
 IMAGE="${EXT_ANALYZE_IMAGE:-ext-static:latest}"
 LISTS="${EXT_ANALYZE_LISTS:-$HOME/.cache/ext-analyze/lists}"
+INTEL="${EXT_ANALYZE_INTEL:-$HOME/analysis/intel}"
 URLHAUS_KEY_FILE="${HOME}/.config/ext-analyze/urlhaus.key"
 
-usage() { sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 [ $# -eq 0 ] && usage 1
 case "${1:-}" in -h|--help) usage 0 ;; esac
 
@@ -81,6 +83,10 @@ LIST_ARGS=()
 if [ -d "$LISTS" ]; then
   MOUNTS+=(-v "$(realpath "$LISTS"):/lists:ro")
   LIST_ARGS=(--lists /lists)
+fi
+if [ -d "$INTEL" ]; then
+  MOUNTS+=(-v "$(realpath "$INTEL"):/intel-local:ro")
+  LIST_ARGS+=(--intel /intel-local)
 fi
 
 OUT_REAL="$(realpath "$OUT")"
