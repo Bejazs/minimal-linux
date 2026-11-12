@@ -14,6 +14,7 @@ RUN pip install --no-cache-dir --only-binary=tree-sitter,tree-sitter-javascript 
  && python3 -c "import tree_sitter_javascript, tree_sitter; tree_sitter.Language(tree_sitter_javascript.language())"
 
 COPY extanalyzer /opt/extanalyzer/extanalyzer
+COPY intel /opt/extanalyzer/intel
 ENV PYTHONPATH=/opt/extanalyzer PYTHONDONTWRITEBYTECODE=1
 
 USER 10001:10001

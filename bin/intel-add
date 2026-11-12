@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""Add a reviewed indicator to the local intel folder (default ~/analysis/intel).
+
+  intel-add domain bad.example --source "URLhaus #123, reviewed by me" --confidence high [--expires 2027-01-01]
+  intel-add ip 203.0.113.7 --source "..." --confidence medium
+  intel-add hash <sha256> --source "..." --confidence high
+  intel-add --check            validate the local files and list expired entries
+
+Every entry needs a source and a confidence: indicators are never copied from
+analysis reports automatically. The folder is mounted read-only into the
+analysis container by ext-analyze. Env: EXT_ANALYZE_INTEL.
+"""
+
+import argparse
+import datetime
+import ipaddress
+import json
+import os
+import re
+import sys
+
+KINDS = {"domain": "domains.json", "ip": "ips.json", "hash": "hashes.json"}
+DOMAIN_RE = re.compile(r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
+
+
+def folder():
+    return os.path.expanduser(os.environ.get("EXT_ANALYZE_INTEL", "~/analysis/intel"))
+
+
+def load(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            doc = json.load(f)
+    except FileNotFoundError:
+        return {"_doc": "local intel (intel-add)", "entries": []}
+    if not isinstance(doc, dict) or not isinstance(doc.get("entries"), list):
+        sys.exit(f"intel-add: {path} is not an intel file (expected an object with 'entries')")
+    return doc
+
+
+def normalize(kind, value):
+    v = value.strip().lower().rstrip(".")
+    if kind == "domain":
+        v = re.sub(r"^[a-z]+://", "", v).split("/", 1)[0]
+        v = v.replace("[.]", ".")
+        if not DOMAIN_RE.match(v):
+            sys.exit(f"intel-add: not a domain: {value}")
+    elif kind == "ip":
+        try:
+            v = str(ipaddress.ip_address(v.replace("[.]", ".")))
+        except ValueError:
+            sys.exit(f"intel-add: not an IP address: {value}")
+    elif kind == "hash" and not re.fullmatch(r"[0-9a-f]{64}", v):
+        sys.exit("intel-add: hashes must be SHA-256 (64 hex characters)")
+    return v
+
+
+def check():
+    d, today, bad = folder(), datetime.date.today(), 0
+    for kind, fn in KINDS.items():
+        path = os.path.join(d, fn)
+        if not os.path.exists(path):
+            continue
+        for e in load(path)["entries"]:
+            missing = [k for k in ("value", "source", "first_seen", "confidence") if not e.get(k)]
+            if missing or e.get("confidence") not in ("high", "medium", "low"):
+                bad += 1
+                print(f"invalid  {fn}: {e} (missing/invalid: {', '.join(missing) or 'confidence'})")
+            elif e.get("expires"):
+                try:
+                    exp = datetime.date.fromisoformat(e["expires"])
+                except (TypeError, ValueError):
+                    bad += 1
+                    print(f"invalid  {fn}: {e['value']} (expires is not YYYY-MM-DD)")
+                    continue
+                if exp < today:
+                    print(f"expired  {fn}: {e['value']} (expired {e['expires']})")
+    print(f"checked {d}: {bad} invalid entr{'y' if bad == 1 else 'ies'}")
+    return 1 if bad else 0
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="intel-add", description=__doc__.split("\n\n")[0])
+    ap.add_argument("kind", nargs="?", choices=sorted(KINDS))
+    ap.add_argument("value", nargs="?")
+    ap.add_argument("--source", help="where it comes from and who reviewed it (required)")
+    ap.add_argument("--confidence", choices=["high", "medium", "low"])
+    ap.add_argument("--expires", help="YYYY-MM-DD (optional; expired entries are ignored with a warning)")
+    ap.add_argument("--note", default=None)
+    ap.add_argument("--check", action="store_true", help="validate the local intel files")
+    a = ap.parse_args()
+    if a.check:
+        return check()
+    if not (a.kind and a.value and a.source and a.source.strip() and a.confidence):
+        ap.error("kind, value, --source and --confidence are required")
+    if a.expires:
+        try:
+            datetime.date.fromisoformat(a.expires)
+        except ValueError:
+            ap.error("--expires must be YYYY-MM-DD")
+    v = normalize(a.kind, a.value)
+    d = folder()
+    os.makedirs(d, exist_ok=True)
+    path = os.path.join(d, KINDS[a.kind])
+    doc = load(path)
+    if any(e.get("value") == v for e in doc["entries"]):
+        print(f"intel-add: {v} is already in {path}")
+        return 0
+    entry = {"value": v, "source": a.source.strip(), "first_seen": datetime.date.today().isoformat(),
+             "confidence": a.confidence, "expires": a.expires}
+    if a.note:
+        entry["note"] = a.note
+    doc["entries"].append(entry)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(doc, f, indent=1, ensure_ascii=False)
+        f.write("\n")
+    os.replace(tmp, path)
+    print(f"added {a.kind} {v} to {path}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

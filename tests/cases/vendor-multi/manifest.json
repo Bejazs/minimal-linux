@@ -1,0 +1,1 @@
+{"manifest_version": 3, "name": "case", "version": "1.0", "background": {"service_worker": "bg.js"}, "homepage_url": "https://www.example.com/", "author": {"email": "dev@gmail.com"}, "action": {"default_popup": "popup.html"}}

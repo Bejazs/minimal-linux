@@ -1,0 +1,435 @@
+{
+ "_doc": "domains: hosts that are never IOCs (specs, schemas, docs, placeholders), matched exactly. common_suffixes: kept as IOCs but marked common, left out of YARA/Sigma. mail_providers / store_hosts: not counted as brand domains (vendor check).",
+ "domains": [
+  {
+   "value": "www.w3.org",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null
+  },
+  {
+   "value": "w3.org",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null
+  },
+  {
+   "value": "schema.org",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null
+  },
+  {
+   "value": "json-schema.org",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null
+  },
+  {
+   "value": "localhost",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null
+  },
+  {
+   "value": "xmlns.com",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null
+  },
+  {
+   "value": "purl.org",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null
+  },
+  {
+   "value": "ns.adobe.com",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null
+  },
+  {
+   "value": "www.apache.org",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null
+  },
+  {
+   "value": "opensource.org",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null
+  },
+  {
+   "value": "mozilla.org",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null
+  },
+  {
+   "value": "developer.mozilla.org",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null
+  },
+  {
+   "value": "developer.chrome.com",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null
+  },
+  {
+   "value": "reactjs.org",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null
+  },
+  {
+   "value": "fb.me",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null
+  },
+  {
+   "value": "github.com",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null
+  }
+ ],
+ "common_suffixes": [
+  {
+   "value": "google.com",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null,
+   "note": "kept as IOCs but marked common: left out of YARA/Sigma"
+  },
+  {
+   "value": "googleapis.com",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null,
+   "note": "kept as IOCs but marked common: left out of YARA/Sigma"
+  },
+  {
+   "value": "gstatic.com",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null,
+   "note": "kept as IOCs but marked common: left out of YARA/Sigma"
+  },
+  {
+   "value": "google-analytics.com",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null,
+   "note": "kept as IOCs but marked common: left out of YARA/Sigma"
+  },
+  {
+   "value": "googletagmanager.com",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null,
+   "note": "kept as IOCs but marked common: left out of YARA/Sigma"
+  },
+  {
+   "value": "chrome.google.com",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null,
+   "note": "kept as IOCs but marked common: left out of YARA/Sigma"
+  },
+  {
+   "value": "cloudflare.com",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null,
+   "note": "kept as IOCs but marked common: left out of YARA/Sigma"
+  },
+  {
+   "value": "jsdelivr.net",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null,
+   "note": "kept as IOCs but marked common: left out of YARA/Sigma"
+  },
+  {
+   "value": "unpkg.com",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null,
+   "note": "kept as IOCs but marked common: left out of YARA/Sigma"
+  },
+  {
+   "value": "cdnjs.cloudflare.com",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null,
+   "note": "kept as IOCs but marked common: left out of YARA/Sigma"
+  },
+  {
+   "value": "microsoft.com",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null,
+   "note": "kept as IOCs but marked common: left out of YARA/Sigma"
+  },
+  {
+   "value": "apple.com",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null,
+   "note": "kept as IOCs but marked common: left out of YARA/Sigma"
+  },
+  {
+   "value": "mozilla.net",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null,
+   "note": "kept as IOCs but marked common: left out of YARA/Sigma"
+  },
+  {
+   "value": "discord.com",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null,
+   "note": "kept as IOCs but marked common: left out of YARA/Sigma"
+  },
+  {
+   "value": "discordapp.com",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null,
+   "note": "kept as IOCs but marked common: left out of YARA/Sigma"
+  },
+  {
+   "value": "telegram.org",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null,
+   "note": "kept as IOCs but marked common: left out of YARA/Sigma"
+  },
+  {
+   "value": "github.io",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null,
+   "note": "kept as IOCs but marked common: left out of YARA/Sigma"
+  },
+  {
+   "value": "githubusercontent.com",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null,
+   "note": "kept as IOCs but marked common: left out of YARA/Sigma"
+  },
+  {
+   "value": "amazonaws.com",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null,
+   "note": "kept as IOCs but marked common: left out of YARA/Sigma"
+  },
+  {
+   "value": "firebaseio.com",
+   "source": "minimal-linux built-in list (v0.1 iocs.py), reviewed 2026-11-12",
+   "first_seen": "2026-11-11",
+   "confidence": "high",
+   "expires": null,
+   "note": "kept as IOCs but marked common: left out of YARA/Sigma"
+  }
+ ],
+ "mail_providers": [
+  {
+   "value": "gmail.com",
+   "source": "minimal-linux, reviewed 2026-11-12",
+   "first_seen": "2026-11-12",
+   "confidence": "high",
+   "expires": null,
+   "note": "free mail provider: an address there does not name a brand"
+  },
+  {
+   "value": "googlemail.com",
+   "source": "minimal-linux, reviewed 2026-11-12",
+   "first_seen": "2026-11-12",
+   "confidence": "high",
+   "expires": null,
+   "note": "free mail provider: an address there does not name a brand"
+  },
+  {
+   "value": "outlook.com",
+   "source": "minimal-linux, reviewed 2026-11-12",
+   "first_seen": "2026-11-12",
+   "confidence": "high",
+   "expires": null,
+   "note": "free mail provider: an address there does not name a brand"
+  },
+  {
+   "value": "hotmail.com",
+   "source": "minimal-linux, reviewed 2026-11-12",
+   "first_seen": "2026-11-12",
+   "confidence": "high",
+   "expires": null,
+   "note": "free mail provider: an address there does not name a brand"
+  },
+  {
+   "value": "live.com",
+   "source": "minimal-linux, reviewed 2026-11-12",
+   "first_seen": "2026-11-12",
+   "confidence": "high",
+   "expires": null,
+   "note": "free mail provider: an address there does not name a brand"
+  },
+  {
+   "value": "yahoo.com",
+   "source": "minimal-linux, reviewed 2026-11-12",
+   "first_seen": "2026-11-12",
+   "confidence": "high",
+   "expires": null,
+   "note": "free mail provider: an address there does not name a brand"
+  },
+  {
+   "value": "icloud.com",
+   "source": "minimal-linux, reviewed 2026-11-12",
+   "first_seen": "2026-11-12",
+   "confidence": "high",
+   "expires": null,
+   "note": "free mail provider: an address there does not name a brand"
+  },
+  {
+   "value": "proton.me",
+   "source": "minimal-linux, reviewed 2026-11-12",
+   "first_seen": "2026-11-12",
+   "confidence": "high",
+   "expires": null,
+   "note": "free mail provider: an address there does not name a brand"
+  },
+  {
+   "value": "protonmail.com",
+   "source": "minimal-linux, reviewed 2026-11-12",
+   "first_seen": "2026-11-12",
+   "confidence": "high",
+   "expires": null,
+   "note": "free mail provider: an address there does not name a brand"
+  },
+  {
+   "value": "gmx.com",
+   "source": "minimal-linux, reviewed 2026-11-12",
+   "first_seen": "2026-11-12",
+   "confidence": "high",
+   "expires": null,
+   "note": "free mail provider: an address there does not name a brand"
+  },
+  {
+   "value": "mail.com",
+   "source": "minimal-linux, reviewed 2026-11-12",
+   "first_seen": "2026-11-12",
+   "confidence": "high",
+   "expires": null,
+   "note": "free mail provider: an address there does not name a brand"
+  },
+  {
+   "value": "yandex.com",
+   "source": "minimal-linux, reviewed 2026-11-12",
+   "first_seen": "2026-11-12",
+   "confidence": "high",
+   "expires": null,
+   "note": "free mail provider: an address there does not name a brand"
+  }
+ ],
+ "store_hosts": [
+  {
+   "value": "chrome.google.com",
+   "source": "minimal-linux, reviewed 2026-11-12",
+   "first_seen": "2026-11-12",
+   "confidence": "high",
+   "expires": null,
+   "note": "browser store or platform documentation"
+  },
+  {
+   "value": "chromewebstore.google.com",
+   "source": "minimal-linux, reviewed 2026-11-12",
+   "first_seen": "2026-11-12",
+   "confidence": "high",
+   "expires": null,
+   "note": "browser store or platform documentation"
+  },
+  {
+   "value": "microsoftedge.microsoft.com",
+   "source": "minimal-linux, reviewed 2026-11-12",
+   "first_seen": "2026-11-12",
+   "confidence": "high",
+   "expires": null,
+   "note": "browser store or platform documentation"
+  },
+  {
+   "value": "addons.mozilla.org",
+   "source": "minimal-linux, reviewed 2026-11-12",
+   "first_seen": "2026-11-12",
+   "confidence": "high",
+   "expires": null,
+   "note": "browser store or platform documentation"
+  },
+  {
+   "value": "clients2.google.com",
+   "source": "minimal-linux, reviewed 2026-11-12",
+   "first_seen": "2026-11-12",
+   "confidence": "high",
+   "expires": null,
+   "note": "browser store or platform documentation"
+  },
+  {
+   "value": "support.google.com",
+   "source": "minimal-linux, reviewed 2026-11-12",
+   "first_seen": "2026-11-12",
+   "confidence": "high",
+   "expires": null,
+   "note": "browser store or platform documentation"
+  },
+  {
+   "value": "developer.chrome.com",
+   "source": "minimal-linux, reviewed 2026-11-12",
+   "first_seen": "2026-11-12",
+   "confidence": "high",
+   "expires": null,
+   "note": "browser store or platform documentation"
+  }
+ ]
+}

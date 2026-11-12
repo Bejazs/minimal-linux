@@ -11,6 +11,7 @@ CONF_W = {"high": 1.0, "medium": 0.6, "low": 0.3}
 # Names for the technique IDs the rules emit (MITRE ATT&CK Enterprise).
 ATTACK_NAMES = {
     "T1027": "Obfuscated Files or Information",
+    "T1027.009": "Obfuscated Files or Information: Embedded Payloads",
     "T1041": "Exfiltration Over C2 Channel",
     "T1056.001": "Input Capture: Keylogging",
     "T1056.003": "Input Capture: Web Portal Capture",
@@ -94,10 +95,12 @@ def score(findings):
 
 
 def score_v0_2(findings):
-    live = [f for f in findings if f.get("reachability") != "unreachable"]
+    # not scored: unreachable code, data-only/low-confidence IOC hits, privacy and vendor-review findings
+    live = [f for f in findings if f.get("reachability") != "unreachable" and f.get("scored", True)]
     base = score(live)
     crit = [f for f in live if f["severity"] == "critical"]
-    unreachable = len(findings) - len(live)
+    unreachable = sum(1 for f in findings if f.get("reachability") == "unreachable")
+    unscored = sum(1 for f in findings if f.get("reachability") != "unreachable" and not f.get("scored", True))
     if crit:
         base["label"] = "malicious"
         base["score"] = 100
@@ -118,5 +121,6 @@ def score_v0_2(findings):
             base["confidence_reason"] += "; raised by " + comb[0]["id"].rsplit("-", 1)[0]
     base["rules_fired"] = sorted({f["id"].rsplit("-", 1)[0] for f in live if f.get("category") == "behavior"})
     base["unreachable_findings_excluded"] = unreachable
+    base["unscored_findings"] = unscored
     base["version"] = "0.2"
     return base

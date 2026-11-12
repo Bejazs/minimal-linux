@@ -1,0 +1,4 @@
+{
+ "_doc": "Known-bad domains. Exact host or any subdomain of value. Add with bin/intel-add, never by copying from reports without review.",
+ "entries": []
+}

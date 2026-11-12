@@ -1,0 +1,4 @@
+{
+ "_doc": "Known-bad IP addresses. Add with bin/intel-add.",
+ "entries": []
+}

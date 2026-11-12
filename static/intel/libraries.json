@@ -1,0 +1,87 @@
+{
+ "_doc": "Known libraries, identified by license headers (first 4 KB, where=header) or distinctive strings (where=any). A match marks the file `library: <name>`: no CODE-OBF, findings lose one confidence step, still listed. Header patterns only: a match anywhere in a bundle would mark app code bundled with the library as the library and lower its findings.",
+ "entries": [
+  {
+   "name": "jQuery",
+   "patterns": [
+    "jQuery (?:JavaScript Library )?v\\d+\\.\\d+",
+    "jquery\\.org/license"
+   ],
+   "where": "header",
+   "source": "pattern checked against a local copy of the library (2026-11-12)"
+  },
+  {
+   "name": "Axios",
+   "patterns": [
+    "Axios v\\d+\\.\\d+\\.\\d+ Copyright"
+   ],
+   "where": "header",
+   "source": "pattern checked against a local copy of the library (2026-11-12)"
+  },
+  {
+   "name": "Lodash",
+   "patterns": [
+    "Lodash <https://lodash\\.com/>"
+   ],
+   "where": "header",
+   "source": "pattern from the library's published header format; not checked against a local copy yet"
+  },
+  {
+   "name": "React",
+   "patterns": [
+    "@license React"
+   ],
+   "where": "header",
+   "source": "pattern from the library's published header format; not checked against a local copy yet"
+  },
+  {
+   "name": "Vue",
+   "patterns": [
+    "Vue\\.js v2\\.\\d+",
+    "\\bvue v3\\.\\d+"
+   ],
+   "where": "header",
+   "source": "pattern from the library's published header format; not checked against a local copy yet"
+  },
+  {
+   "name": "DOMPurify",
+   "patterns": [
+    "@license DOMPurify"
+   ],
+   "where": "header",
+   "source": "pattern from the library's published header format; not checked against a local copy yet"
+  },
+  {
+   "name": "Moment.js",
+   "patterns": [
+    "//! moment\\.js"
+   ],
+   "where": "header",
+   "source": "pattern from the library's published header format; not checked against a local copy yet"
+  },
+  {
+   "name": "Bootstrap",
+   "patterns": [
+    "Bootstrap v\\d+\\.\\d+\\.\\d+ \\(https://getbootstrap\\.com/\\)"
+   ],
+   "where": "header",
+   "source": "pattern from the library's published header format; not checked against a local copy yet"
+  },
+  {
+   "name": "webextension-polyfill",
+   "patterns": [
+    "webextension-polyfill - v\\d+"
+   ],
+   "where": "header",
+   "source": "pattern from the library's published header format; not checked against a local copy yet"
+  },
+  {
+   "name": "core-js",
+   "patterns": [
+    "core-js[^\\n]{0,80}Denis Pushkarev"
+   ],
+   "where": "header",
+   "source": "pattern from the library's published header format; not checked against a local copy yet"
+  }
+ ]
+}

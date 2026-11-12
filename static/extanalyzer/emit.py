@@ -7,6 +7,7 @@ import re
 import uuid
 
 from .common import defang, defang_domain
+from .refs import is_code
 
 try:
     import yara  # yara-python, optional: validates the generated rule
@@ -36,12 +37,13 @@ def write_behaviors(behaviors, out_dir):
 def write_iocs_csv(iocs, out_dir):
     with open(os.path.join(out_dir, "iocs.csv"), "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["type", "value", "defanged", "first_seen", "count", "common", "tranco_rank", "urlhaus_hits"])
+        w.writerow(["type", "value", "defanged", "first_seen", "count", "common", "tranco_rank", "urlhaus_hits",
+                    "reference"])
         for kind, key in (("domain", "domains"), ("url", "urls"), ("ip", "ips"), ("extension_id", "extension_ids")):
             for i in iocs[key]:
                 df = defang_domain(i["value"]) if kind in ("domain", "ip") else (defang(i["value"]) if kind == "url" else i["value"])
                 w.writerow([kind, i["value"], df, i["first_seen"], i["count"], i.get("common", False),
-                            i.get("tranco_rank") or "", i.get("urlhaus_hits", "")])
+                            i.get("tranco_rank") or "", i.get("urlhaus_hits", ""), i.get("reference", "")])
 
 
 def _yara_str(s):
@@ -54,11 +56,12 @@ def write_yara(report, out_dir, unpacked_dir):
     rid = re.sub(r"[^a-zA-Z0-9_]", "_", s.get("extension_id") or (s.get("sha256") or s.get("tree_sha256") or "sample")[:16])
     # Only sample-specific strings: non-common domains and their full URLs.
     # Generic API names (chrome.cookies.getAll, eval) would match thousands of benign extensions.
-    common = {d["value"] for d in report["iocs"]["domains"] if d.get("common")}
-    strings = [d["value"] for d in report["iocs"]["domains"] if not d.get("common")]
+    # Data-only IOCs (JSON lists, unreachable code, docs links) are left out (refs.py).
+    common = {d["value"] for d in report["iocs"]["domains"] if d.get("common") or not is_code(d)}
+    strings = [d["value"] for d in report["iocs"]["domains"] if not d.get("common") and is_code(d)]
     for u in report["iocs"]["urls"]:
         host = re.sub(r"^[a-z]+://([^/:]+).*$", r"\1", u["value"], flags=re.I).lower()
-        if host not in common and "/" in u["value"].split("://", 1)[-1].rstrip("/"):
+        if host not in common and is_code(u) and "/" in u["value"].split("://", 1)[-1].rstrip("/"):
             strings.append(u["value"])
     seen, uniq = set(), []
     for x in strings:
@@ -99,7 +102,7 @@ def write_yara(report, out_dir, unpacked_dir):
 
 
 def write_sigma(report, out_dir):
-    domains = [d["value"] for d in report["iocs"]["domains"] if not d.get("common")]
+    domains = [d["value"] for d in report["iocs"]["domains"] if not d.get("common") and is_code(d)]
     if not domains:
         return []
     sd = os.path.join(out_dir, "sigma")
@@ -189,6 +192,10 @@ def write_markdown(report, out_dir):
             elif loc.get("deobfuscated_path"):
                 where += f" (beautified: {loc['deobfuscated_path']})"
             md.append(f"Location: {where}")
+            ml = loc.get("minified_location") or {}
+            if loc.get("beautified_location") and ml.get("line"):
+                md.append(f"Original file: {ml['path']}:{ml['line']}:{ml['column']}"
+                          + (" (approximate)" if ml.get("mapping") == "approximate" else ""))
         if f.get("snippet"):
             md.append("")
             md.append("```")
@@ -201,6 +208,10 @@ def write_markdown(report, out_dir):
             md.append("ATT&CK: " + ", ".join(f["attack"]))
         if f.get("attack_gap"):
             md.append(f"ATT&CK gap: {f['attack_gap']}")
+        if f.get("library"):
+            md.append(f"Library: {f['library']}")
+        if f.get("scored") is False:
+            md.append("Not scored (outside the malware score)")
         md.append("")
     if dead:
         md.append("## Not reachable from any entry point (not scored)")
@@ -212,7 +223,15 @@ def write_markdown(report, out_dir):
         md.append("")
     i = report["iocs"]
     md.append("## IOCs")
-    for d in i["domains"]:
+    md.append("Code-referenced (in reachable code; used for YARA/Sigma):")
+    md.append("")
+    data_only = {}
+    for kind in ("domains", "urls", "ips"):
+        for x in i[kind]:
+            if not is_code(x):
+                for fpath, cnt in (x.get("files") or {x["first_seen"].rpartition(":")[0]: 1}).items():
+                    data_only.setdefault(fpath, []).append((kind[:-1], x["value"]))
+    for d in [d for d in i["domains"] if is_code(d)]:
         tags = []
         if d.get("urlhaus_hits"):
             tags.append("**URLhaus: known malicious**")
@@ -224,15 +243,33 @@ def write_markdown(report, out_dir):
             tags.append("common")
         tag = f" ({', '.join(tags)})" if tags else ""
         md.append(f"- domain `{defang_domain(d['value'])}`{tag} — first seen {d['first_seen']}")
-    for u in i["urls"][:50]:
+    for u in [u for u in i["urls"] if is_code(u)][:50]:
         md.append(f"- url `{defang(u['value'])}` — {u['first_seen']}")
-    for ip in i["ips"]:
+    for ip in [x for x in i["ips"] if is_code(x)]:
         md.append(f"- ip `{defang_domain(ip['value'])}` — {ip['first_seen']}")
     for e in i["extension_ids"]:
         md.append(f"- extension id `{e['value']}` — {e['first_seen']}")
-    if not any(i.values()):
+    if not any(is_code(x) for k in ("domains", "urls", "ips") for x in i[k]) and not i["extension_ids"]:
         md.append("- none")
     md.append("")
+    if data_only:
+        md.append("Data-only (not in reachable code; not scored, not in YARA/Sigma), by file:")
+        md.append("")
+        for fpath in sorted(data_only):
+            vals = sorted(set(data_only[fpath]))
+            shown = ", ".join(f"`{defang(v) if k == 'url' else defang_domain(v)}`" for k, v in vals[:8])
+            md.append(f"- {fpath}: {len(vals)} IOC(s): {shown}" + (" …" if len(vals) > 8 else ""))
+        md.append("")
+    libs_found = [fi for fi in report.get("files", []) if fi.get("library")]
+    if libs_found:
+        md.append("## Libraries")
+        md += [f"- `{fi['path']}`: {fi['library']} (`{fi.get('library_evidence', '')}`)" for fi in libs_found]
+        md.append("")
+    ven = (report.get("vendor") or {}).get("domains") or {}
+    if ven:
+        md.append("## Brand domains")
+        md += [f"- `{defang_domain(k)}`: {', '.join(v[:3])}" for k, v in ven.items()]
+        md.append("")
     art = report.get("artifacts", {})
     md.append("## Artifacts")
     md.append("- report.json, behaviors.json, iocs.csv")

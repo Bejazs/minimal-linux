@@ -14,7 +14,8 @@ import shutil
 import subprocess
 import sys
 
-from . import __version__, code_scan, combine, detectors, emit, flows, iocs, lists, manifest, reach, score
+from . import (__version__, code_scan, combine, detectors, disclosure, emit, flows, intel, iocs, libs, lists, locmap,
+               manifest, pkgcontent, reach, refs, score, vendor)
 from .common import finding, snippet
 from .unpack import UnpackError, inventory, unpack
 
@@ -45,7 +46,76 @@ def _wasm_to_wat(unpacked, deob):
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-def analyze_one(sample, out_root, lists_dir=None):
+def _ioc_findings(found_iocs, files, lists_info, it):
+    """URLhaus and intel matches. Only code-referenced IOCs with high confidence are scored."""
+    out = []
+
+    def add(rid, title, conf, reason, i, attack, source, intel_conf="high"):
+        path, _, ln = i["first_seen"].rpartition(":")
+        code = refs.is_code(i)
+        scored = code and intel_conf == "high"
+        why = (f"{reason}; IOC is {i.get('reference', 'unclassified')} ({i.get('reference_reason', '')})"
+               + ("" if scored else "; not scored: only code-referenced IOCs with high-confidence intel change the verdict"))
+        f = finding(f"{rid}-{len(out) + 1:03d}", title, "high" if code else "low", conf if code else "low", why,
+                    path=path or None, line_start=int(ln) if ln.isdigit() else None, attack=attack,
+                    category="ioc", match=i["value"])
+        f["reachability"] = "n/a"
+        f["intel_source"] = source
+        f["scored"] = scored
+        out.append(f)
+
+    for d in found_iocs["domains"]:
+        if d.get("urlhaus_hits"):
+            add("IOC-URLHAUS", f"Domain {d['value']} is listed in URLhaus", "high",
+                f"exact host match in URLhaus ({d['urlhaus_hits']} URL(s)); list date "
+                f"{lists_info['meta'].get('urlhaus', 'unknown')}", d, ["T1071.001"], "urlhaus")
+            d.setdefault("intel", []).append({"source": "urlhaus", "confidence": "high"})
+        for e in it.domain_hits(d["value"]):
+            add("IOC-INTEL", f"Domain {d['value']} is in local intel ({e['value']})", e["confidence"],
+                f"intel entry from {e['source']} (first seen {e['first_seen']}, {e['origin']} list)", d,
+                ["T1071.001"], e["source"], e["confidence"])
+            d.setdefault("intel", []).append({"source": e["source"], "confidence": e["confidence"]})
+    for ip in found_iocs["ips"]:
+        for e in it.ip_hits(ip["value"]):
+            add("IOC-INTEL", f"IP {ip['value']} is in local intel", e["confidence"],
+                f"intel entry from {e['source']} (first seen {e['first_seen']}, {e['origin']} list)", ip,
+                ["T1071.001"], e["source"], e["confidence"])
+    for item in files:
+        for e in it.hash_hits(item["sha256"]):
+            f = finding(f"IOC-HASH-{len(out) + 1:03d}", f"File {item['path']} matches a known-bad hash",
+                        "high", e["confidence"], f"SHA-256 in intel from {e['source']} (first seen {e['first_seen']})",
+                        path=item["path"], category="ioc", match=item["sha256"])
+            f["reachability"] = "n/a"
+            f["intel_source"] = e["source"]
+            f["scored"] = e["confidence"] == "high"
+            out.append(f)
+    return out
+
+
+def _add_snippets(findings, pkg, unpacked, file_info):
+    beaut = {fi["path"]: fi.get("beautified_path") for fi in file_info}
+    cache = {}
+    for f in findings:
+        loc = f.get("location") or {}
+        if f.get("snippet") or not loc.get("line_start") or not loc.get("path"):
+            continue
+        p = loc["path"]
+        if p not in cache:
+            text = pkg.text_used.get(p, "") if pkg is not None else ""
+            if not text:      # e.g. a declarativeNetRequest ruleset (JSON), or no syntax trees
+                try:
+                    with open(os.path.join(unpacked, p), encoding="utf-8", errors="replace") as fh:
+                        text = fh.read(4 * 1024 * 1024)
+                except OSError:
+                    text = ""
+            cache[p] = text.splitlines() if text else None
+        if cache[p]:
+            f["snippet"] = snippet(cache[p], loc["line_start"])
+            if beaut.get(p) and pkg is not None and p in pkg.text_used and f.get("category") != "ioc":
+                loc["lines_refer_to"] = beaut[p]
+
+
+def analyze_one(sample, out_root, lists_dir=None, intel_dir=None):
     tmp = os.path.join(out_root, ".tmp-" + _slug(os.path.basename(sample.rstrip("/"))))
     shutil.rmtree(tmp, ignore_errors=True)
     unpacked = os.path.join(tmp, "unpacked")
@@ -54,27 +124,32 @@ def analyze_one(sample, out_root, lists_dir=None):
     sha = (meta["hashes"] or {}).get("sha256") or _tree_hash(files)
     deob = os.path.join(unpacked, "_deob")
 
+    it = intel.load(intel_dir)
     m_meta, findings = manifest.analyze(unpacked)
     c_findings, file_info = code_scan.analyze(unpacked, m_meta, deob)
     findings += c_findings
+    libs.detect(unpacked, file_info, it)
     _wasm_to_wat(unpacked, deob)
     ext_id = meta.get("crx_id") or (m_meta or {}).get("id_from_key")
-    found_iocs = iocs.extract(unpacked, self_ids={ext_id} if ext_id else ())
+    found_iocs = iocs.extract(unpacked, self_ids={ext_id} if ext_id else (), intel=it)
     lists_info, lists_warn = lists.enrich(found_iocs["domains"], lists_dir)
-    meta["warnings"] = list(meta["warnings"]) + lists_warn
-    for d in found_iocs["domains"]:
-        if d.get("urlhaus_hits"):
-            path, _, ln = d["first_seen"].rpartition(":")
-            findings.append(finding(
-                f"IOC-URLHAUS-{len(findings) + 1}", f"Domain {d['value']} is listed in URLhaus",
-                "high", "high", f"exact host match in URLhaus ({d['urlhaus_hits']} URL(s)); "
-                f"list date {lists_info['meta'].get('urlhaus', 'unknown')}",
-                path=path or None, line_start=int(ln) if ln.isdigit() else None,
-                attack=["T1071.001"], category="ioc", match=d["value"]))
-    behaviors, b_findings = analyze_behaviors(unpacked, file_info, findings, lists_dir)
-    v01 = score.score(findings)                # v0.1: previous detectors only, all code
-    findings = emit.sort_findings(findings + b_findings)
+    meta["warnings"] = list(meta["warnings"]) + lists_warn + it.warnings
+    behaviors, b_findings, pkg, fl = analyze_behaviors(unpacked, file_info, findings, lists_dir)
+    refs.classify(found_iocs, pkg, behaviors.get("detectors", []))
+    ioc_findings = _ioc_findings(found_iocs, files, lists_info, it)
+    # v0.1: previous detectors only (and URLhaus, which v0.1 already had), all code, unchanged weights
+    v01 = score.score(findings + [dict(f, severity="high", confidence="high") for f in ioc_findings
+                                                 if f["id"].startswith("IOC-URLHAUS")])
+    registrable = lists.registrable_func(lists_dir)
+    v_findings, vendor_info = vendor.analyze(unpacked, reach._load_manifest(unpacked), registrable, it)
+    p_findings, disclosure_info = disclosure.analyze(pkg, fl, it, unpacked)
+    findings = findings + b_findings + ioc_findings + pkgcontent.analyze(unpacked, files) + v_findings + p_findings
+    libs.adjust(findings, file_info)
+    _add_snippets(findings, pkg, unpacked, file_info)
+    locmap.map_locations(findings, unpacked, file_info)
+    findings = emit.sort_findings(findings)
     verdict = score.score_v0_2(findings)
+    behaviors["disclosure"] = disclosure_info
 
     name = (m_meta or {}).get("name") or meta["input"]
     if isinstance(name, str) and name.startswith("__MSG_"):
@@ -103,6 +178,9 @@ def analyze_one(sample, out_root, lists_dir=None):
         "findings": findings,
         "iocs": found_iocs,
         "lists": lists_info,
+        "intel": it.summary(),
+        "vendor": vendor_info,
+        "disclosure": disclosure_info,
         "files": file_info,
         "inventory": files,
         "warnings": meta["warnings"],
@@ -149,7 +227,7 @@ def analyze_behaviors(unpacked, file_info, findings, lists_dir):
         for f in findings:
             f["reachability"] = "unknown"
         return {"reachability": None, "flows": [], "combinations": [], "detectors": [],
-                "note": "tree-sitter not available: no reachability or flow analysis"}, []
+                "note": "tree-sitter not available: no reachability or flow analysis"}, [], None, []
     for f in findings:
         loc = f.get("location") or {}
         f["reachability"] = pkg.status(loc.get("path"), loc.get("line_start"))
@@ -162,21 +240,6 @@ def analyze_behaviors(unpacked, file_info, findings, lists_dir):
     b_findings, matches = combine.evaluate(fl)
     d_findings, d_records = detectors.analyze(pkg, fl)
     b_findings += d_findings
-    for f in b_findings:
-        if not f.get("location") or not f["location"].get("line_start"):
-            continue
-        text = pkg.text_used.get(f["location"]["path"], "")
-        if not text:      # e.g. a declarativeNetRequest ruleset (JSON)
-            try:
-                with open(os.path.join(unpacked, f["location"]["path"]), encoding="utf-8", errors="replace") as fh:
-                    text = fh.read(4 * 1024 * 1024)
-            except OSError:
-                text = ""
-        if text:
-            f["snippet"] = snippet(text.splitlines() or [""], f["location"]["line_start"])
-            beaut = next((fi.get("beautified_path") for fi in file_info if fi["path"] == f["location"]["path"]), None)
-            if beaut:
-                f["location"]["lines_refer_to"] = beaut
     return {
         "reachability": pkg.summary(),
         "primary_domains": sorted(primary),
@@ -187,7 +250,7 @@ def analyze_behaviors(unpacked, file_info, findings, lists_dir):
                   for k, v in combine.RULES.items()},
         "detector_definitions": {k: {kk: v[kk] for kk in ("plan", "title", "attack", "attack_gap", "why")}
                                  for k, v in detectors.DETECTORS.items()},
-    }, b_findings
+    }, b_findings, pkg, fl
 
 
 def diff_reports(old, new, out_root):
@@ -245,6 +308,7 @@ def main(argv=None):
     ap.add_argument("--diff", nargs=2, metavar=("OLD", "NEW"), help="compare two versions of the same extension")
     ap.add_argument("--out", default="/out", help="output root (default /out)")
     ap.add_argument("--lists", default=None, help="folder with Tranco/PSL/URLhaus lists (optional)")
+    ap.add_argument("--intel", default=None, help="local intel folder laid over the built-in intel/ (optional)")
     args = ap.parse_args(argv)
     if not args.samples and not args.diff:
         ap.error("give at least one sample, or --diff OLD NEW")
@@ -255,7 +319,7 @@ def main(argv=None):
         if sample in results:
             continue
         try:
-            out_dir, rep = analyze_one(sample, args.out, args.lists)
+            out_dir, rep = analyze_one(sample, args.out, args.lists, args.intel)
             results[sample] = rep
             v = rep["verdict"]
             print(f"{v['label']:<17} {v['score']:>3}/100  conf={v['confidence']:<6} "

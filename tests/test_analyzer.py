@@ -237,5 +237,110 @@ class BehaviorTests(unittest.TestCase):
         self.assertIn("js/lib.min.js", rep["reachability"]["files_unreachable"])
 
 
+@unittest.skipUnless(jsast.available(), "tree-sitter not installed")
+class ReportQualityTests(unittest.TestCase):
+    """IOC reference (D), intel, libraries (G/J), package content (E), locations (H), vendor (I), disclosure (F)."""
+
+    def setUp(self):
+        self.out = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.out)
+
+    def run_case(self, name, **kw):
+        return cli.analyze_one(os.path.join(CASES, name), self.out, **kw)
+
+    def test_ioc_reference(self):
+        out_dir, rep = self.run_case("ioc-reference")
+        ref = {d["value"]: d["reference"] for d in rep["iocs"]["domains"]}
+        self.assertEqual(ref["api.example.com"], "code-referenced")
+        for v in ("dead.example.net", "listed.example.org", "docs.example.org"):
+            self.assertEqual(ref[v], "data-only", v)
+        with open(os.path.join(out_dir, "rule.yar")) as f:
+            rule = f.read()
+        self.assertIn("api.example.com", rule)
+        self.assertNotIn("listed.example.org", rule)
+        with open(os.path.join(out_dir, "report.md")) as f:
+            md = f.read()
+        self.assertIn("Data-only", md)
+        self.assertIn("data/list.json: 4 IOC(s)", md)
+
+    def test_intel_local_folder(self):
+        d = tempfile.mkdtemp(dir=self.out)
+        entries = [
+            {"value": "api.example.com", "source": "test fixture", "first_seen": "2026-01-01",
+             "confidence": "high", "expires": None},
+            {"value": "listed.example.org", "source": "test fixture", "first_seen": "2026-01-01",
+             "confidence": "high", "expires": None},
+            {"value": "old.example.org", "source": "test fixture", "first_seen": "2020-01-01",
+             "confidence": "high", "expires": "2021-01-01"},
+            {"value": "nosource.example.org", "first_seen": "2026-01-01", "confidence": "high", "expires": None},
+        ]
+        with open(os.path.join(d, "domains.json"), "w") as f:
+            json.dump({"entries": entries}, f)
+        _, rep = self.run_case("ioc-reference", intel_dir=d)
+        hits = {f["match"]: f for f in rep["findings"] if f["id"].startswith("IOC-INTEL")}
+        self.assertTrue(hits["api.example.com"]["scored"])            # code-referenced, high confidence
+        self.assertFalse(hits["listed.example.org"]["scored"])        # data-only: reported, not scored
+        self.assertEqual(rep["verdict"]["label"], "low_risk")         # one high/high IOC alone: 25 points
+        self.assertTrue(any("expired entry ignored: old.example.org" in w for w in rep["warnings"]))
+        self.assertTrue(any("missing source" in w for w in rep["warnings"]))
+        self.assertEqual(rep["intel"]["loaded"], ["builtin", "local"])
+
+    def test_library(self):
+        _, rep = self.run_case("library-known")
+        lib = {fi["path"]: fi.get("library") for fi in rep["files"]}
+        self.assertEqual(lib["js/jquery.min.js"], "jQuery")
+        obf = [f for f in rep["findings"] if f["id"].startswith("CODE-OBF")]
+        self.assertEqual(obf[0]["severity"], "info")
+        self.assertNotIn("T1027", [t["id"] for t in rep["verdict"]["attack"]])
+
+    def test_non_extension_content(self):
+        _, rep = self.run_case("nonext-content")
+        by = {f["location"]["path"]: f for f in rep["findings"] if f["id"].startswith("PKG-NONEXT")}
+        self.assertEqual(by["bin/helper.exe"]["severity"], "high")
+        self.assertEqual(by["tools/run.sh"]["severity"], "medium")
+        self.assertEqual(by["server/index.php"]["severity"], "medium")
+        self.assertEqual(by["tools/run.sh"]["kind"], "non-extension-content-in-package")
+
+    def test_line_mapping(self):
+        _, rep = self.run_case("line-mapping")
+        f = next(f for f in rep["findings"] if f["id"].startswith("CODE-EVAL"))
+        with open(os.path.join(CASES, "line-mapping", "bg.js")) as fh:
+            col = fh.read().index("eval(") + 1
+        self.assertEqual(f["location"]["minified_location"], {"path": "bg.js", "line": 1, "column": col,
+                                                              "mapping": "verified"})
+        self.assertEqual(f["location"]["beautified_location"]["path"], os.path.join("_deob", "bg.js"))
+
+    def test_vendor_and_disclosure_are_not_scored(self):
+        _, rep = self.run_case("vendor-multi")
+        v = next(f for f in rep["findings"] if f["id"].startswith("VENDOR-MULTI"))
+        self.assertFalse(v["scored"])
+        self.assertEqual(sorted(rep["vendor"]["domains"]), ["example.com", "example.net"])
+        _, rep = self.run_case("disclosure-mismatch-pos")
+        cats = {f["title"] for f in rep["findings"] if f["id"].startswith("PRIV-DISCLOSURE")}
+        self.assertEqual(cats, {"Sends email address without mentioning it",
+                                "Sends browsing history or URLs without mentioning it"})
+        self.assertEqual(rep["verdict"]["unscored_findings"], 2)
+
+
+class IntelTests(unittest.TestCase):
+    def test_builtin_intel_is_valid(self):
+        from extanalyzer import intel
+        it = intel.load()
+        self.assertEqual(it.warnings, [])
+        self.assertIn("www.w3.org", it.ignore_domains)
+        self.assertTrue(it.is_common("fonts.googleapis.com"))
+        self.assertTrue(it.libraries)
+
+    def test_entry_validation(self):
+        from extanalyzer import intel
+        ok = {"value": "a.example", "source": "s", "first_seen": "2026-01-01", "confidence": "high", "expires": None}
+        self.assertIsNone(intel.validate_entry(ok))
+        self.assertEqual(intel.validate_entry(dict(ok, confidence="certain")), "confidence must be high, medium or low")
+        self.assertEqual(intel.validate_entry(dict(ok, first_seen="yesterday")), "first_seen must be YYYY-MM-DD")
+        self.assertTrue(intel.expired(dict(ok, expires="2000-01-01")))
+
+
 if __name__ == "__main__":
     unittest.main()

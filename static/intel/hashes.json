@@ -1,0 +1,4 @@
+{
+ "_doc": "Known-bad file SHA-256 hashes (whole package or single files). Add with bin/intel-add.",
+ "entries": []
+}

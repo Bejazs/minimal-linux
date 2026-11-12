@@ -1,10 +1,16 @@
-"""IOC extraction from all text files of the unpacked extension."""
+"""IOC extraction from all text files of the unpacked extension.
+
+No IOC literals live here: hosts to ignore and common suffixes come from
+intel/ignore.json (see intel.py). Each IOC lists the files it appears in, so
+data-only occurrences can be grouped per file (refs.py).
+"""
 
 import ipaddress
 import os
 import re
 from urllib.parse import urlsplit
 
+from . import intel as intel_mod
 from .common import line_of
 
 TEXT_EXT = {".js", ".mjs", ".cjs", ".html", ".htm", ".json", ".css", ".txt", ".xml", ".svg", ".map"}
@@ -14,28 +20,22 @@ URL_RE = re.compile(r"""\b(?:https?|wss?)://[^\s'"`<>()\\{}|^]{3,2048}""", re.I)
 IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 EXT_ID_RE = re.compile(r"(?<![a-z0-9])[a-p]{32}(?![a-z0-9])")
 
-# Never IOCs (schemas, specs, placeholders, local).
-IGNORE_DOMAINS = {"www.w3.org", "w3.org", "schema.org", "json-schema.org", "localhost", "xmlns.com",
-                  "purl.org", "ns.adobe.com", "www.apache.org", "opensource.org", "mozilla.org",
-                  "developer.mozilla.org", "developer.chrome.com", "reactjs.org", "fb.me", "github.com"}
-# Kept as IOCs but marked common (excluded from Sigma to avoid noise).
-COMMON_SUFFIXES = ("google.com", "googleapis.com", "gstatic.com", "google-analytics.com", "googletagmanager.com",
-                   "chrome.google.com", "cloudflare.com", "jsdelivr.net", "unpkg.com", "cdnjs.cloudflare.com",
-                   "microsoft.com", "apple.com", "mozilla.net", "discord.com", "discordapp.com",
-                   "telegram.org", "github.io", "githubusercontent.com", "amazonaws.com", "firebaseio.com")
+MAX_FILES_PER_IOC = 20
 
 
-def _is_common(domain):
-    return any(domain == s or domain.endswith("." + s) for s in COMMON_SUFFIXES)
-
-
-def extract(root: str, self_ids=()):
+def extract(root: str, self_ids=(), intel=None):
+    """IOCs of every text file. Ignore and common lists come from intel/ignore.json."""
+    it = intel or intel_mod.load()
+    ignore = it.ignore_domains
     urls, domains, ips, ext_ids = {}, {}, {}, {}
 
     def note(store, key, rel, ln, **extra):
         if key not in store:
-            store[key] = {"value": key, "first_seen": f"{rel}:{ln}", "count": 0, **extra}
+            store[key] = {"value": key, "first_seen": f"{rel}:{ln}", "count": 0, "files": {}, **extra}
         store[key]["count"] += 1
+        files = store[key]["files"]
+        if rel in files or len(files) < MAX_FILES_PER_IOC:
+            files[rel] = files.get(rel, 0) + 1
 
     for dirpath, dirs, files in os.walk(root):
         dirs[:] = [d for d in dirs if d != "_deob"]
@@ -54,7 +54,7 @@ def extract(root: str, self_ids=()):
                     host = (urlsplit(url).hostname or "").lower()
                 except ValueError:
                     continue
-                if not host or host in IGNORE_DOMAINS or "${" in url or "{{" in url:
+                if not host or host in ignore or "${" in url or "{{" in url:
                     continue
                 ln, _ = line_of(text, m.start())
                 note(urls, url, rel, ln)
@@ -63,7 +63,7 @@ def extract(root: str, self_ids=()):
                     note(ips, host, rel, ln)
                 except ValueError:
                     if "." in host:
-                        note(domains, host, rel, ln, common=_is_common(host))
+                        note(domains, host, rel, ln, common=it.is_common(host))
             for m in IPV4_RE.finditer(text):
                 ip = m.group(0)
                 try:

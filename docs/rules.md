@@ -16,7 +16,10 @@ no IOC literals for these rules; they look only at code structure.
 5. **Flows** (`flows.py`): source → sink taint tracking inside functions and their callbacks.
 6. **Combination rules** (`combine.py`): below. Written to `behaviors.json`.
 7. **Detectors** (`detectors.py`): B1–B9, below. Written to `behaviors.json` (`detectors[]`).
-8. **Score** (`score.py`): `score_v0.1` and `score_v0.2`, both in `report.json`.
+8. **IOCs and intel** (`refs.py`, `intel.py`): each IOC is `code-referenced` or `data-only`; intel and URLhaus hits.
+9. **Report quality**: libraries (`libs.py`), non-extension content (`pkgcontent.py`), brand domains
+   (`vendor.py`), disclosure vs behaviour (`disclosure.py`), original/beautified locations (`locmap.py`).
+10. **Score** (`score.py`): `score_v0.1` and `score_v0.2`, both in `report.json`.
 
 ## Reachability
 
@@ -97,11 +100,81 @@ combination rules, do not decide the label on their own, except where noted.
 B7 folds literals only (depth 40, 4096 characters) in Python; no JavaScript is evaluated. Detectors
 are capped at 50 findings each per sample.
 
+## IOCs: code-referenced or data-only (D)
+
+| Reference | When |
+| --- | --- |
+| `code-referenced` | in a string literal of reachable JS, rebuilt by DET-OBF-STRING, loaded by a reachable page (`<script>/<iframe>/<img>/<link>` with a remote URL), or in a code file that did not parse |
+| `data-only` | JSON/CSS/text files, unreachable code, comments, or only inside prose strings (documentation links in library error messages) |
+
+Data-only IOCs are listed per file with a count, are not scored and do not go into YARA/Sigma.
+Without tree-sitter every IOC is `unclassified` and treated as before.
+
+## Intel (`static/intel/`)
+
+Versioned in the repo and copied into the image. `~/analysis/intel/` on the host (optional) is mounted
+read-only and laid over it. Files: `domains.json`, `ips.json`, `hashes.json` (indicators),
+`ignore.json` (never-IOC hosts, common suffixes, mail providers, store hosts), `libraries.json`,
+`disclosure.json` (categories and synonyms for F).
+
+Indicator schema: `value`, `source`, `first_seen` (YYYY-MM-DD), `confidence` (high/medium/low),
+`expires` (YYYY-MM-DD or null). Invalid entries are dropped and expired ones ignored, each with a
+warning in the report. `intel-add` on the host adds entries and requires `--source` and
+`--confidence`; nothing is copied from reports automatically. The built-in indicator lists start empty.
+
+| Finding | Condition | Scored |
+| --- | --- | --- |
+| IOC-INTEL | domain (exact or subdomain) or IP in intel | only if code-referenced and the entry's confidence is high |
+| IOC-HASH | a file's SHA-256 in `hashes.json` | if the entry's confidence is high |
+| IOC-URLHAUS | exact host in the URLhaus export | only if code-referenced |
+
+Unscored hits stay in the report as low/low with the reason.
+
+## Libraries (G) and ATT&CK (J)
+
+A file whose first 4 KB match a license header in `libraries.json` (jQuery, Axios, Lodash, React, Vue,
+DOMPurify, Moment.js, Bootstrap, webextension-polyfill, core-js) is marked `library`. Its CODE-OBF becomes
+`info` with no T1027, its code and detector findings lose one confidence step (DET-OBF-STRING also drops
+from high to medium severity), and combination rules are only annotated. Findings stay visible because a
+library copy can be modified. Only header patterns are used, because a bundle that merely includes a
+library is still app code. jQuery and Axios patterns were checked against local copies; the others
+follow the projects' published headers and are marked so in the file.
+
+ATT&CK: each rule and detector lists the closest techniques, plus `attack_gap` where none fits.
+
+## Non-extension content (E)
+
+`PKG-NONEXT` (`kind: non-extension-content-in-package`): PE (MZ + PE signature), ELF, Mach-O, or
+extensions `.exe/.dll/.so/.dylib/.jar/...` → high (T1027.009); PHP, interpreter lines (`#!`) outside JS,
+or `.py/.sh/.bat/.ps1/...` → medium. Confidence is high for a content signature and medium for an
+extension match only.
+
+## Locations (H)
+
+Minified files are analysed in their beautified copy. Every finding has `location.minified_location`
+(original path, line, column) and, for beautified files, `location.beautified_location`. The original
+position is the one with the same number of non-whitespace characters before it (jsbeautifier only
+changes whitespace). It is checked by comparing the next 24 characters and marked `verified` or
+`approximate`.
+
+## Brand domains (I) and disclosure (F)
+
+`VENDOR-MULTI` (`kind: multiple-brand-domains`, low): more than one registrable domain among
+`homepage_url`, the author email, `mailto:` links, privacy/terms/support/contact links in the extension's
+pages and URLs or addresses in `_locales`. Free mail providers and browser stores are ignored. It is
+meant for human review and is not scored.
+
+`PRIV-DISCLOSURE` (`kind: disclosure-mismatch`, category `privacy`, low/low, not scored): a data
+category from `disclosure.json` is sent but never mentioned in `_locales` or the extension's pages. The
+check uses field names in the sent body (fetch/axios/jQuery `body`/`data`, sendBeacon, XHR/WebSocket
+`send`, with request options left out) and flow sources at the send, such as cookies or typed input.
+
 ## Score
 
 - **v0.1** (`score_v0.1`): previous method, unchanged. Sum of severity × confidence over the v0.1
   findings (all code, reachable or not), max 3 per rule, capped at 100.
-- **v0.2** (`score_v0.2`, also `verdict`): the same sum over findings that are not `unreachable`,
+- **v0.2** (`score_v0.2`, also `verdict`): the same sum over findings that are not `unreachable` and
+  not marked `scored: false` (data-only or low-confidence intel hits, vendor and privacy findings),
   including behaviour findings (critical = 50). Then:
   - any reachable **critical** combination rule → `malicious`, score 100;
   - a reachable **high/high** combination rule (COMB-C2) or DET-CMD-DISPATCH (switch form) → at least
